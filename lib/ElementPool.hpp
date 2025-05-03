@@ -30,6 +30,7 @@ class ElementPool {
     std::vector<T*> garbage;
 
     void reserve() {
+        // std::cout << "Reserving " << capacity_ << std::endl;
         if (pool_) {
             garbage.push_back(pool_);
         }
@@ -40,5 +41,6 @@ class ElementPool {
         if (pool_ == nullptr) {
             exit(0);
         }
+        // std::cout << "Reserved " << capacity_ << std::endl;
     }
 };

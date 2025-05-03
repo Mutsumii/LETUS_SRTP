@@ -20,6 +20,7 @@ class NibbleBucket {
     }
     BasePage* GetPage(const PageKey& pagekey);
     DeltaPage* GetDeltaPage(const string& pid);
+    
 
     const pair<uint64_t, uint64_t> & GetPageVersion(PageKey pagekey);
     void  UpdatePageVersion(PageKey pagekey, uint64_t current_version, uint64_t latest_basepage_version);
@@ -80,37 +81,38 @@ class Worker {
     void  UpdatePageKey(const PageKey& old_pagekey, const PageKey& new_pagekey);
     void  WritePageCache(PageKey pagekey, Page* page);
     
-    NibbleBucket* GetNibbleBucket(uint8_t nibble_value) {
-        // if (nibble_buckets_[nibble_value] == nullptr) {
-        //     throw std::runtime_error("Nibble bucket not initialized");
-        // }
-        // bool waited = false;
-        // if (nibble_buckets_[nibble_value] == nullptr) {
-        //     waited = true;
-        // }
-        while (nibble_buckets_[nibble_value] == nullptr) {
-            // waited = true;
-            // std::cout << "Waiting for NibbleBucket " << nibble_value << std::endl;
-            std::this_thread::yield();  // wait for the nibble bucket to be initialized
-        }
-        // if (waited) {
-        //     std::cout << "Waited for NibbleBucket " << nibble_value << std::endl;
-        //     // nibble_buckets_[nibble_value]->UpdateMasterNibbleBucket();
-        // }
-        // if (nibble_buckets_[nibble_value])
-        // return nibble_buckets_[nibble_value].get();
-        return nibble_buckets_[nibble_value];
-        // else
-        //     return nullptr;
-    }
+    // NibbleBucket* GetNibbleBucket(uint8_t nibble_value) {
+    //     // if (nibble_buckets_[nibble_value] == nullptr) {
+    //     //     throw std::runtime_error("Nibble bucket not initialized");
+    //     // }
+    //     // bool waited = false;
+    //     // if (nibble_buckets_[nibble_value] == nullptr) {
+    //     //     waited = true;
+    //     // }
+    //     while (nibble_buckets_[nibble_value] == nullptr) {
+    //         // waited = true;
+    //         // std::cout << "Waiting for NibbleBucket " << nibble_value << std::endl;
+    //         std::this_thread::yield();  // wait for the nibble bucket to be initialized
+    //     }
+    //     // if (waited) {
+    //     //     std::cout << "Waited for NibbleBucket " << nibble_value << std::endl;
+    //     //     // nibble_buckets_[nibble_value]->UpdateMasterNibbleBucket();
+    //     // }
+    //     // if (nibble_buckets_[nibble_value])
+    //     // return nibble_buckets_[nibble_value].get();
+    //     return nibble_buckets_[nibble_value];
+    //     // else
+    //     //     return nullptr;
+    // }
 
     protected:
     // std::unique_ptr<NibbleBucket> nibble_buckets_[256];
-    NibbleBucket* nibble_buckets_[256];
+    // NibbleBucket* nibble_buckets_[256];
     std::map<PageKey, Page*> page_cache_;
     std::unordered_map<PageKey, std::list<std::pair<PageKey, BasePage*>>::iterator, PageKey::Hash> lru_cache_;
     list<pair<PageKey, BasePage*>> pagekeys_;  // list to maintain cache order
     std::unordered_map<std::string, DeltaPage*> active_deltapages_;  // deltapage of all pages, delta pages are indexed by pid
     std::unordered_map<std::string, std::pair<uint64_t, uint64_t>> page_versions_;  // current version, latest basepage version
     ElementPool<BasePage> pool_;
+    ElementPool<DeltaPage> pool_delta_;
 };

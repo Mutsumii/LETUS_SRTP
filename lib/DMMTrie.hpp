@@ -204,10 +204,10 @@ class DeltaPage : public Page {
 
 class BasePage : public Page {
  public:
-  BasePage(NibbleBucket *bucket = nullptr, Node *root = nullptr,
+  BasePage(Worker* worker_ = nullptr, Node *root = nullptr,
       const string &pid = "");
-  BasePage(NibbleBucket *bucket, char* buffer);
-  BasePage(NibbleBucket *bucket, string key, string pid, string nibbles);
+  BasePage(Worker* worker_, char* buffer);
+  BasePage(Worker* worker_, string key, string pid, string nibbles);
   BasePage(const BasePage &other);  // deep copy
   ~BasePage();
   void SerializeTo();
@@ -218,12 +218,13 @@ class BasePage : public Page {
                   PageKey pagekey);
   void UpdateDeltaItem(const DeltaPage::DeltaItem &deltaitem);
   Node* GetRoot() const;
-  void SetAttribute(NibbleBucket *bucket = nullptr, Node *root = nullptr,
+  void SetAttribute(Worker* worker_ = nullptr, Node *root = nullptr,
     const string &pid = "");
 
- private:
- NibbleBucket* bucket_;
- Node* root_;  // the root of the page
+  private:
+  Worker* worker_;
+  NibbleBucket* bucket_;
+  Node* root_;  // the root of the page
   std::mutex mutex_;
 };
 

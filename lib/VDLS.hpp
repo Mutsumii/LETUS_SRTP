@@ -16,6 +16,7 @@
 #include <mutex>
 #include <shared_mutex>
 #include <atomic>
+#include <cstring>
 
 using namespace std;
 

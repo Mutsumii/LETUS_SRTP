@@ -25,32 +25,32 @@ const std::string& GetNibble(uint8_t nibble_value) {
     return nibbles[nibble_value];
 }
 
-void Master::LoadBalance() {
-    vector<TaggedInt> data;
-    data.reserve(256);
-    // TaggedInt data[256];
-    for (int i = 0; i < 256; i++) {
-        data.emplace_back(TaggedInt{ nibble_buckets_[i]->GetPageKeySize(),nibble_dict_[i], static_cast<uint8_t>(i) });
-        // data[i].original_region = nibble_dict_[i];
-        // data[i].value = nibble_buckets_[i]->GetAccessCount();
-    }
-    auto new_dist = partitionIntoNGroups(data, MAX_REGION_NUM);
-    for(int i = 0; i < MAX_REGION_NUM; i++) {
-     for(int j = 0; j < new_dist[i].size(); j++) {
-        auto old_region_id = new_dist[i][j].original_region;
-        auto new_region_id = i;
-        if (old_region_id != new_region_id && new_dist[i][j].value > 0) {
-            // PrintLog("Move Nibble \"" + GetNibble(new_dist[i][j].nibble_value) + "\"(" + to_string(new_dist[i][j].value) + ")" + " from Region " + to_string(old_region_id) + " to Region " + to_string(new_region_id));
-            regions_[old_region_id]->postTask(make_tuple(0, "<MOVE> " + std::to_string(new_dist[i][j].nibble_value), to_string(reinterpret_cast<uintptr_t>(regions_[new_region_id]->nibble_buckets_))));
-            // PrintLog(string("Post Task [<MOVE> ") + std::to_string(new_dist[i][j].nibble_value) + " | " + to_string(reinterpret_cast<uintptr_t>(regions_[new_region_id]->nibble_buckets_)) +"] to Region " + to_string(old_region_id));
-            // regions_[new_region_id]->nibble_buckets_[new_dist[i][j].nibble_value] = std::move(regions_[old_region_id]->nibble_buckets_[new_dist[i][j].nibble_value]);
-            // nibble_buckets_[new_dist[i][j].nibble_value] = regions_[new_region_id]->nibble_buckets_[new_dist[i][j].value].get();
-            nibble_buckets_[new_dist[i][j].nibble_value]->SetOwnerRegion(new_region_id);
-            nibble_dict_[new_dist[i][j].nibble_value] = new_region_id;
-        }
-     }
-    }
-}
+// void Master::LoadBalance() {
+//     vector<TaggedInt> data;
+//     data.reserve(256);
+//     // TaggedInt data[256];
+//     for (int i = 0; i < 256; i++) {
+//         data.emplace_back(TaggedInt{ nibble_buckets_[i]->GetPageKeySize(),nibble_dict_[i], static_cast<uint8_t>(i) });
+//         // data[i].original_region = nibble_dict_[i];
+//         // data[i].value = nibble_buckets_[i]->GetAccessCount();
+//     }
+//     auto new_dist = partitionIntoNGroups(data, MAX_REGION_NUM);
+//     for(int i = 0; i < MAX_REGION_NUM; i++) {
+//      for(int j = 0; j < new_dist[i].size(); j++) {
+//         auto old_region_id = new_dist[i][j].original_region;
+//         auto new_region_id = i;
+//         if (old_region_id != new_region_id && new_dist[i][j].value > 0) {
+//             // PrintLog("Move Nibble \"" + GetNibble(new_dist[i][j].nibble_value) + "\"(" + to_string(new_dist[i][j].value) + ")" + " from Region " + to_string(old_region_id) + " to Region " + to_string(new_region_id));
+//             regions_[old_region_id]->postTask(make_tuple(0, "<MOVE> " + std::to_string(new_dist[i][j].nibble_value), to_string(reinterpret_cast<uintptr_t>(regions_[new_region_id]->nibble_buckets_))));
+//             // PrintLog(string("Post Task [<MOVE> ") + std::to_string(new_dist[i][j].nibble_value) + " | " + to_string(reinterpret_cast<uintptr_t>(regions_[new_region_id]->nibble_buckets_)) +"] to Region " + to_string(old_region_id));
+//             // regions_[new_region_id]->nibble_buckets_[new_dist[i][j].nibble_value] = std::move(regions_[old_region_id]->nibble_buckets_[new_dist[i][j].nibble_value]);
+//             // nibble_buckets_[new_dist[i][j].nibble_value] = regions_[new_region_id]->nibble_buckets_[new_dist[i][j].value].get();
+//             nibble_buckets_[new_dist[i][j].nibble_value]->SetOwnerRegion(new_region_id);
+//             nibble_dict_[new_dist[i][j].nibble_value] = new_region_id;
+//         }
+//      }
+//     }
+// }
 
 Master::Master(VDLS* value_store) : value_store_(value_store) {
     regions_.reserve(MAX_REGION_NUM);
@@ -59,7 +59,7 @@ Master::Master(VDLS* value_store) : value_store_(value_store) {
     //     nibble_dict_[i] = 255;
     //     nibble_buckets_[i] = std::make_unique<NibbleBucket>();
     // }
-    NibbleBucket::master_nibble_bucket_ = this->nibble_buckets_;
+    // NibbleBucket::master_nibble_bucket_ = this->nibble_buckets_;
     // PrintLog(string("Master Nibble Bucket: ") + to_string(reinterpret_cast<uintptr_t>(nibble_buckets_)));
     for (uint8_t i = 0; i < MAX_REGION_NUM; i++) {
         // PrintLog("Creating Region " + to_string(i));
@@ -67,10 +67,10 @@ Master::Master(VDLS* value_store) : value_store_(value_store) {
         for(uint16_t j = i; j < 256; j += MAX_REGION_NUM) {
             nibble_dict_[j] = i;
             // new_region->nibble_buckets_[j] = std::make_unique<NibbleBucket>(j);
-            new_region->nibble_buckets_[j] = new NibbleBucket(j);
-            // nibble_buckets_[j] = new_region->nibble_buckets_[j].get();
-            nibble_buckets_[j] = new_region->nibble_buckets_[j];
-            nibble_buckets_[j]->SetOwnerRegion(i);
+            // new_region->nibble_buckets_[j] = new NibbleBucket(j);
+            // // nibble_buckets_[j] = new_region->nibble_buckets_[j].get();
+            // nibble_buckets_[j] = new_region->nibble_buckets_[j];
+            // nibble_buckets_[j]->SetOwnerRegion(i);
         }
         regions_.push_back(new_region);
         // PrintLog("Region " + to_string(i) + " created");

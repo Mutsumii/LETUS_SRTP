@@ -1,8 +1,9 @@
 #include <iostream>
 #include <chrono>
-#include "DMMTrie.hpp"
+// #include "DMMTrie.hpp"
 // #include "LSVPS.hpp"
 #include "VDLS.hpp"
+#include "Master.hpp"
 #include <cassert>
 #include <random>
 
@@ -35,7 +36,7 @@ int main() {
     std::string data_path;
     data_path = "/home/xuwenhao/DMMTree/data/";//your own path
     VDLS* value_store = new VDLS(data_path);
-    DMMTrie* trie = new DMMTrie(0, value_store);
+    Master* trie = new Master(value_store);
     // page_store->RegisterTrie(trie);
 
     KVPair kvs[100000];

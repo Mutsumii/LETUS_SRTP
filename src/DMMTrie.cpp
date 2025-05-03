@@ -548,18 +548,19 @@ uint16_t DeltaPage::GetBasePageUpdateCount() { return b_update_count_; }
 
 void DeltaPage::ClearBasePageUpdateCount() { b_update_count_ = 0; }
 
-BasePage::BasePage(NibbleBucket *bucket, Node *root, const string &pid)
-  : bucket_(bucket), root_(root), Page({ 0, 0, false, pid }) {
+BasePage::BasePage(Worker* worker, Node *root, const string &pid)
+  : worker_(worker), root_(root), Page({ 0, 0, false, pid }) {
 }
 
-void BasePage::SetAttribute(NibbleBucket *bucket, Node *root,
+void BasePage::SetAttribute(Worker* worker, Node *root,
   const string& pid) {
-    bucket_ = bucket;
-    root_ = root;
+  // bucket_ = bucket;
+  worker_ = worker;
+  root_ = root;
     Page({0, 0, false, pid});
 }
 
-BasePage::BasePage(const BasePage &other) : Page(other), bucket_(other.bucket_) {
+BasePage::BasePage(const BasePage &other) : Page(other), worker_(other.worker_) {
   // Deep copy the root node
   if (other.root_) {
     if (other.root_->IsLeaf()) {
@@ -572,7 +573,7 @@ BasePage::BasePage(const BasePage &other) : Page(other), bucket_(other.bucket_) 
   }
 }
 
-BasePage::BasePage(NibbleBucket *bucket, char *buffer) : bucket_(bucket) {
+BasePage::BasePage(Worker* worker, char *buffer) : worker_(worker) {
   Page({0, 0, false, ""});  // 临时初始化，后面会更新
 
   size_t current_size = 0;
@@ -612,8 +613,8 @@ BasePage::BasePage(NibbleBucket *bucket, char *buffer) : bucket_(bucket) {
   this->SetPageKey(pagekey);
 }
 
-BasePage::BasePage(NibbleBucket *bucket, string key, string pid, string nibbles)
-    : bucket_(bucket), Page({0, 0, false, pid}) {
+BasePage::BasePage(Worker* worker, string key, string pid, string nibbles)
+    : worker_(worker), Page({0, 0, false, pid}) {
   if (nibbles.size() == 0) {  // leafnode
     root_ = new LeafNode(0, key, {}, "");
   } else if (nibbles.size() == 1) {  // indexnode->leafnode
@@ -752,8 +753,8 @@ void BasePage::UpdatePage(uint64_t version,
     //   return;
     // }
   }
-    pair<uint64_t, uint64_t> page_version = bucket_->GetPageVersion(pagekey);
-    bucket_->UpdatePageVersion(pagekey, version, page_version.second);
+    pair<uint64_t, uint64_t> page_version = worker_->GetPageVersion(pagekey);
+    worker_->UpdatePageVersion(pagekey, version, page_version.second);
 }
 
 void BasePage::UpdateDeltaItem(const DeltaPage::DeltaItem& deltaitem) {
