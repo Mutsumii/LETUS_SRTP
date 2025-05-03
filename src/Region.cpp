@@ -11,6 +11,7 @@ auto CompareStrings = [](const std::string &a, const std::string &b) {
 };
 
 void Region::run() {
+  // PrintLog(string("Nibble Bucket Address:") + to_string(reinterpret_cast<uintptr_t>(this->nibble_buckets_)));
   while (!stop_) {
     auto task = queue_.popTask();
         if (get<0>(task) != 0) {
@@ -19,7 +20,7 @@ void Region::run() {
 #endif
             Put(task);
 #ifdef REGION_LOG 
-            PrintLog("PUT [" + get<1>(task) + "-" + get<2>(task) + "]");
+            // PrintLog("PUT [" + get<1>(task) + "-" + get<2>(task) + "]");
 #endif
         }
         else if (get<1>(task) == "<COMMIT>") {
@@ -47,7 +48,32 @@ void Region::run() {
             // PrintLog("JOIN [" + get<2>(task) + "]");
             // Join();
         }
-        
+        else if (get<1>(task).substr(0, 6) == "<MOVE>") {
+#ifdef REGION_LOG 
+            PrintLog(string("Pop Task ")+get<1>(task));
+#endif
+            // regions_[old_region_id]->postTask(make_tuple(0, "<MOVE> "+std::to_string(new_dist[i][j].nibble_value), to_string(reinterpret_cast<uintptr_t>(regions_[new_region_id]->nibble_buckets_))));
+// regions_[new_region_id]->nibble_buckets_[new_dist[i][j].nibble_value] = std::move(regions_[old_region_id]->nibble_buckets_[new_dist[i][j].nibble_value]);
+// nibble_buckets_[new_dist[i][j].nibble_value] = regions_[new_region_id]->nibble_buckets_[new_dist[i][j].value].get();
+            // std::unique_ptr<NibbleBucket>* dest_nibble_buckets = reinterpret_cast<std::unique_ptr<NibbleBucket>*>(std::stoull(get<2>(task)));
+            auto dest_nibble_buckets = reinterpret_cast<NibbleBucket**>(std::stoull(get<2>(task)));
+            uint8_t nibble_value = std::stoul(get<1>(task).substr(7));
+            // PrintLog(to_string(nibble_value));
+            // dest_nibble_buckets[nibble_value] = std::move(nibble_buckets_[nibble_value]);
+            dest_nibble_buckets[nibble_value] = nibble_buckets_[nibble_value];
+            // PrintLog(to_string(nibble_buckets_[nibble_value] == nullptr));
+            nibble_buckets_[nibble_value] = nullptr;
+            // dest_nibble_buckets[nibble_value]->UpdateMasterNibbleBucket();
+            // PrintLog("5");
+        }
+        else {
+          if (get<1>(task).length() > 0) {
+            PrintLog(string("Unknown Task:") + get<1>(task));
+            PrintLog(get<1>(task).substr(0, 6));
+            PrintLog(get<1>(task).substr(7));
+          }
+        }
+
         // {
         //   std::string buffer_state = "Buffer Size: " + std::to_string(buffer_.size()) + "\n";
         //   buffer_state += buffer_.ToString() + "\n";
@@ -108,23 +134,38 @@ void Region::Commit(uint64_t version) {
           updates[it.first.substr(0, i)].insert(it.first.substr(i, 2));
         }
       }
-      for (const auto &it : updates) {
-        string pid = it.first;
-        // get the latest version number of a page
-        uint64_t page_version = GetPageVersion({ 0, 0, false, pid }).first;
+  //     set<string> pids;
+
+  // for (const auto &it : put_cache_) {
+  //   for (int i = it.first.size() % 2 == 0 ? it.first.size()
+  //                                         : it.first.size() - 1;
+  //        i > 0; i -= 2) {
+  //     pids.insert(it.first.substr(0, i));
+  //   }
+  // }
+  
+  for (const auto& it : updates) {
+    string pid = it.first;
+    // PrintLog(string("Wait ") + to_string(GetNibbleValue(pid)));
+    NibbleBucket* bucket = nullptr;
+    while (!(bucket = GetNibbleBucket(GetNibbleValue(pid))));
+
+    // while (!bucket);
+    // get the latest version number of a page
+        uint64_t page_version = bucket->GetPageVersion({ 0, 0, false, pid }).first;
         PageKey pagekey = {version, 0, false, pid},
                 old_pagekey = {page_version, 0, false, pid};
-        BasePage *page = GetPage(old_pagekey);  // load the page into lru cache
+        BasePage *page = bucket->GetPage(old_pagekey);  // load the page into lru cache
     
         if (page == nullptr) {
           // GetPage returns nullptr means that the pid is new
           // page = new BasePage(this, nullptr, pid);
-          page = pool_.allocate();
-          page->SetAttribute(this, nullptr, pid);
-          PutPage(pagekey, page);  // add the newly generated page into cache
+          page = bucket->AllocPage();
+          page->SetAttribute(bucket, nullptr, pid);
+          bucket->PutPage(pagekey, page);  // add the newly generated page into cache
         }
     
-        DeltaPage *deltapage = GetDeltaPage(pid);
+        DeltaPage *deltapage = bucket->GetDeltaPage(pid);
     
         for (const auto &nibbles : it.second) {
           // path is key when page is leaf page, pid of child page when page is
@@ -133,7 +174,7 @@ void Region::Commit(uint64_t version) {
           tuple<uint64_t, uint64_t, uint64_t> location;
           string value, child_hash;
           if (nibbles.size() == 2) {  // indexnode + indexnode
-            child_hash = GetPage({ version, 0, false, path })->GetRoot()->GetHash();
+            child_hash = bucket->GetPage({ version, 0, false, path })->GetRoot()->GetHash();
           } else {  // (indexnode + leafnode) or leafnode
             value = put_cache_[path];
             location = value_store_->WriteValue(version, path, value);
@@ -142,14 +183,15 @@ void Region::Commit(uint64_t version) {
                              deltapage, pagekey);
         }
     
-        UpdatePageKey(old_pagekey, pagekey);
+        bucket->UpdatePageKey(old_pagekey, pagekey);
       }
       for (const auto& it : put_cache_) {
-          std::string nibbles = it.first.substr(0, 2);
-          tuple<uint64_t, uint64_t, uint64_t> location;
+        std::string nibbles = it.first.substr(0, 2);
+        NibbleBucket* bucket = GetNibbleBucket(GetNibbleValue(nibbles));
+        tuple<uint64_t, uint64_t, uint64_t> location;
           string value, child_hash;
           if (nibbles.size() == 2) {  // indexnode + indexnode
-            BasePage* base = GetPage({ version, 0, false, nibbles });
+            BasePage* base = bucket->GetPage({ version, 0, false, nibbles });
             child_hash = base->GetRoot()->GetHash();
           }
           else {  // (indexnode + leafnode) or leafnode
@@ -174,10 +216,10 @@ void Region::Commit(uint64_t version) {
       while(!buffer_.push_back(make_pair(version + 1, list<BufferItem>{}))) {
         PrintLog("Buffer is full, waiting for commit");
       }
-      // std::this_thread::sleep_for(chrono::milliseconds(1));
-      page_cache_.clear();
-      put_cache_.clear();
       commited_version_ = version;
+      // std::this_thread::sleep_for(chrono::milliseconds(1));
+      // page_cache_.clear();
+      put_cache_.clear();
       #ifdef TIMESTAMP_LOG
       PrintLog("COMMIT DONE <" + to_string(version) + "> | " + GetCurrentTimeStamp(3));
       #endif

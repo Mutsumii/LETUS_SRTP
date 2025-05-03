@@ -15,8 +15,10 @@
 #include "common.hpp"
 #include "parallel.hpp"
 
+#include <mutex>
+
 static constexpr size_t HASH_SIZE = 32;
-static constexpr size_t DMM_NODE_FANOUT = 10;
+static constexpr size_t DMM_NODE_FANOUT = 16;
 static constexpr uint16_t Td_ = 128;  // update threshold of DeltaPage
 static constexpr uint16_t Tb_ = 256;  // update threshold of BasePage
 static constexpr uint16_t MAX_THREADS = 32;
@@ -26,6 +28,19 @@ class DeltaPage;
 class Master;
 class Region;
 class Worker;
+class NibbleBucket;
+
+inline int GetIndex(char ch) {
+  if (isdigit(ch)) {
+    return ch - '0';
+  } else if (ch >= 'a' && ch <= 'f') {
+    return ch - 'a' + 10;
+  } else if (ch >= 'A' && ch <= 'F') {
+    return ch - 'A' + 10;
+  } else {
+    return -1;
+  }
+}
 
 string HashFunction(const string &input);
 
@@ -172,14 +187,15 @@ class DeltaPage : public Page {
                          uint64_t fileID, uint64_t offset, uint64_t size);
   void SerializeTo();
   void ClearDeltaPage();
-  vector<DeltaItem> GetDeltaItems() const;
+  const vector<DeltaItem> &GetDeltaItems() const;
   PageKey GetLastPageKey() const;
   void SetLastPageKey(PageKey pagekey);
   uint16_t GetDeltaPageUpdateCount();
   uint16_t GetBasePageUpdateCount();
   void ClearBasePageUpdateCount();
 
- private:
+  private:
+  // std::mutex mtx;
   vector<DeltaItem> deltaitems_;
   PageKey last_pagekey_;
   uint16_t update_count_;
@@ -188,10 +204,10 @@ class DeltaPage : public Page {
 
 class BasePage : public Page {
  public:
-  BasePage(Worker *worker = nullptr, Node *root = nullptr,
+  BasePage(NibbleBucket *bucket = nullptr, Node *root = nullptr,
       const string &pid = "");
-  BasePage(Worker* trie, char* buffer);
-  BasePage(Worker *trie, string key, string pid, string nibbles);
+  BasePage(NibbleBucket *bucket, char* buffer);
+  BasePage(NibbleBucket *bucket, string key, string pid, string nibbles);
   BasePage(const BasePage &other);  // deep copy
   ~BasePage();
   void SerializeTo();
@@ -200,13 +216,13 @@ class BasePage : public Page {
                   const string &value, const string &nibbles,
                   const string &child_hash, DeltaPage *deltapage,
                   PageKey pagekey);
-  void UpdateDeltaItem(DeltaPage::DeltaItem deltaitem);
+  void UpdateDeltaItem(const DeltaPage::DeltaItem &deltaitem);
   Node* GetRoot() const;
-  void SetAttribute(Worker *worker = nullptr, Node *root = nullptr,
+  void SetAttribute(NibbleBucket *bucket = nullptr, Node *root = nullptr,
     const string &pid = "");
 
  private:
- Worker* worker_;
+ NibbleBucket* bucket_;
  Node* root_;  // the root of the page
   std::mutex mutex_;
 };
@@ -262,5 +278,7 @@ class DMMTrie {
   void UpdatePageKey(const PageKey &old_pagekey, const PageKey &new_pagekey);
   string RecursiveVerify(PageKey pagekey);
 };
+
+
 
 #endif

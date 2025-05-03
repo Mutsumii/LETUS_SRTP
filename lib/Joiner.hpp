@@ -10,7 +10,7 @@ class Master;
 class Region;
 class BufferItem;
 
-class Joiner : Worker{
+class Joiner : NibbleBucket{
     friend class Master;
     friend class Region;
     public:

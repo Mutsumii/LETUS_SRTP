@@ -16,6 +16,7 @@
 #include <unordered_map>
 #include <vector>
 #include "Master.hpp"
+#include "Worker.hpp"
 
 using namespace std;
 
@@ -484,7 +485,8 @@ DeltaPage::DeltaPage(char *buffer) : b_update_count_(0) {
 
 void DeltaPage::AddIndexNodeUpdate(uint8_t location, uint64_t version,
                                    const string &hash, uint8_t index,
-                                   const string &child_hash) {
+  const string& child_hash) {
+  // std::lock_guard<std::mutex> lock(mtx);
   deltaitems_.push_back(
       DeltaItem(location, false, version, hash, 0, 0, 0, index, child_hash));
   ++update_count_;
@@ -532,7 +534,7 @@ void DeltaPage::ClearDeltaPage() {
   update_count_ = 0;
 }
 
-vector<DeltaPage::DeltaItem> DeltaPage::GetDeltaItems() const {
+const vector<DeltaPage::DeltaItem>& DeltaPage::GetDeltaItems() const {
   return deltaitems_;
 }
 
@@ -546,18 +548,18 @@ uint16_t DeltaPage::GetBasePageUpdateCount() { return b_update_count_; }
 
 void DeltaPage::ClearBasePageUpdateCount() { b_update_count_ = 0; }
 
-BasePage::BasePage(Worker *worker, Node *root, const string &pid)
-  : worker_(worker), root_(root), Page({ 0, 0, false, pid }) {
+BasePage::BasePage(NibbleBucket *bucket, Node *root, const string &pid)
+  : bucket_(bucket), root_(root), Page({ 0, 0, false, pid }) {
 }
 
-void BasePage::SetAttribute(Worker *worker, Node *root,
+void BasePage::SetAttribute(NibbleBucket *bucket, Node *root,
   const string& pid) {
-    worker_ = worker;
+    bucket_ = bucket;
     root_ = root;
     Page({0, 0, false, pid});
 }
 
-BasePage::BasePage(const BasePage &other) : Page(other), worker_(other.worker_) {
+BasePage::BasePage(const BasePage &other) : Page(other), bucket_(other.bucket_) {
   // Deep copy the root node
   if (other.root_) {
     if (other.root_->IsLeaf()) {
@@ -570,7 +572,7 @@ BasePage::BasePage(const BasePage &other) : Page(other), worker_(other.worker_) 
   }
 }
 
-BasePage::BasePage(Worker *worker, char *buffer) : worker_(worker) {
+BasePage::BasePage(NibbleBucket *bucket, char *buffer) : bucket_(bucket) {
   Page({0, 0, false, ""});  // 临时初始化，后面会更新
 
   size_t current_size = 0;
@@ -610,23 +612,23 @@ BasePage::BasePage(Worker *worker, char *buffer) : worker_(worker) {
   this->SetPageKey(pagekey);
 }
 
-BasePage::BasePage(Worker *worker, string key, string pid, string nibbles)
-    : worker_(worker), Page({0, 0, false, pid}) {
+BasePage::BasePage(NibbleBucket *bucket, string key, string pid, string nibbles)
+    : bucket_(bucket), Page({0, 0, false, pid}) {
   if (nibbles.size() == 0) {  // leafnode
     root_ = new LeafNode(0, key, {}, "");
   } else if (nibbles.size() == 1) {  // indexnode->leafnode
     Node *child_node = new LeafNode(0, key, {}, "");
     root_ = new IndexNode(0, "", 0);
 
-    int index = nibbles[0] - '0';
+    int index = GetIndex(nibbles[0]);
     root_->AddChild(index, child_node, 0, "");
   } else {  // indexnode->indexnode
-    int index = nibbles[1] - '0';
+    int index = GetIndex(nibbles[1]);
     // second level of indexnode should route its child by bitmap
     Node *child_node = new IndexNode(0, "", 1 << index);
     root_ = new IndexNode(0, "", 0);
 
-    index = nibbles[0] - '0';
+    index = GetIndex(nibbles[0]);
     root_->AddChild(index, child_node, 0, "");
   }
 }
@@ -688,7 +690,7 @@ void BasePage::UpdatePage(uint64_t version,
     if (!root_) {
       root_ = new IndexNode(0, "", 0);
     }
-    int index = nibbles[0] - '0';
+    int index = GetIndex(nibbles[0]);
     if (!root_->HasChild(index)) {
       Node *child_node =
           new LeafNode(0, pagekey.pid + to_string(index), {}, "");
@@ -705,7 +707,7 @@ void BasePage::UpdatePage(uint64_t version,
     if (!root_) {
       root_ = new IndexNode(0, "", 0);
     }
-    int index = nibbles[0] - '0', child_index = nibbles[1] - '0';
+    int index = GetIndex(nibbles[0]), child_index = GetIndex(nibbles[1]);
     if (!root_->HasChild(index)) {
       Node *child_node = new IndexNode(0, "", 1 << child_index);
       root_->AddChild(index, child_node, 0, "");
@@ -750,11 +752,11 @@ void BasePage::UpdatePage(uint64_t version,
     //   return;
     // }
   }
-    pair<uint64_t, uint64_t> page_version = worker_->GetPageVersion(pagekey);
-    worker_->UpdatePageVersion(pagekey, version, page_version.second);
+    pair<uint64_t, uint64_t> page_version = bucket_->GetPageVersion(pagekey);
+    bucket_->UpdatePageVersion(pagekey, version, page_version.second);
 }
 
-void BasePage::UpdateDeltaItem(DeltaPage::DeltaItem deltaitem) {
+void BasePage::UpdateDeltaItem(const DeltaPage::DeltaItem& deltaitem) {
   // add one update from deltapage to basepage
   Node *node = nullptr;
   if (root_ == nullptr) {
@@ -794,9 +796,9 @@ void BasePage::UpdateDeltaItem(DeltaPage::DeltaItem deltaitem) {
     node->SetHash(deltaitem.hash);
     node->SetChild(deltaitem.index, deltaitem.version, deltaitem.child_hash);
   }
-  PageKey old_pagekey = GetPageKey();
+  const auto& old_pagekey = GetPageKey();
   SetPageKey(
-      {deltaitem.version, old_pagekey.tid, old_pagekey.type, old_pagekey.pid});
+      PageKey{deltaitem.version, old_pagekey.tid, old_pagekey.type, old_pagekey.pid});
 }
 
 Node *BasePage::GetRoot() const { return root_; }
@@ -1001,19 +1003,19 @@ DMMTrieProof DMMTrie::GetProof(uint64_t tid, uint64_t version,
     if (!page->GetRoot()->IsLeaf()) {
       // first level in page is indexnode
       merkle_proof.proofs.push_back(
-          page->GetRoot()->GetNodeProof(i, nibble_path[i] - '0'));
-      if (!page->GetRoot()->GetChild(nibble_path[i] - '0')->IsLeaf()) {
+          page->GetRoot()->GetNodeProof(i, GetIndex(nibble_path[i])));
+      if (!page->GetRoot()->GetChild(GetIndex(nibble_path[i]))->IsLeaf()) {
         // second level is indexnode
         merkle_proof.proofs.push_back(
             page->GetRoot()
-                ->GetChild(nibble_path[i] - '0')
-                ->GetNodeProof(i + 1, nibble_path[i + 1] - '0'));
+                ->GetChild(GetIndex(nibble_path[i]))
+                ->GetNodeProof(i + 1, GetIndex(nibble_path[i+1])));
         page_version = page->GetRoot()
-                           ->GetChild(nibble_path[i] - '0')
-                           ->GetChildVersion(nibble_path[i + 1] - '0');
+                           ->GetChild(GetIndex(nibble_path[i]))
+                           ->GetChildVersion(GetIndex(nibble_path[i+1]));
       } else {  // second level is leafnode
         leafnode = static_cast<LeafNode *>(
-            page->GetRoot()->GetChild(nibble_path[i] - '0'));
+            page->GetRoot()->GetChild(GetIndex(nibble_path[i])));
       }
     } else {  // first level is leafnode
       leafnode = static_cast<LeafNode *>(page->GetRoot());
@@ -1161,8 +1163,8 @@ void DMMTrie::PutPage(const PageKey &pagekey,
     delete last_iter->second->second;  // release memory of basepage
 
     // remove the page whose pagekey is at the tail of list
-    lru_cache_.erase(last_key);
     pagekeys_.pop_back();
+    lru_cache_.erase(last_key);
   }
 
   // insert the pair of PageKey and BasePage* to the front

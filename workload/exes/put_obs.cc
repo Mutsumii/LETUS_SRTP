@@ -11,7 +11,7 @@ std::vector<int> generateRandomNumbers(int count) {
     // unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
     unsigned seed = 0;
     std::mt19937 generator(seed);
-    std::uniform_int_distribution<int> distribution(10000, 99999);
+    std::uniform_int_distribution<int> distribution(10000000, 99999999);
     
     for (int i = 0; i < count; ++i) {
         numbers.push_back(distribution(generator));
@@ -40,7 +40,7 @@ int main() {
 
     KVPair kvs[100000];
     int key_len = 5;
-    // for (int i = 0; i < 20000; i++) {
+    // for (int i = 0; i < 50000; i++) {
     //     char buffer[20];  // 假设数字不会超过 20 位
     //     sprintf(buffer, "%d", i);  // 格式化输出，补零
     //     int j = 0;
@@ -62,7 +62,7 @@ int main() {
     //     kvs[5] = { "22010", "22222222222222222222222222222222" };
     //     kvs[6] = { "00011", "11111111111111111111111111111111" };
     //     kvs[7] = { "22110", "22222222222222222222222222222222" };
-    //     kvs[8] = { "22222", "11111111111111111111111111111111" };
+    //     kvs[8] = { "66666", "11111111111111111111111111111111" };
     //     kvs[9] = { "33333", "22222222222222222222222222222222" };
     // }
     auto random_keys = generateRandomNumbers(20000);
@@ -78,7 +78,7 @@ int main() {
     // auto start = chrono::system_clock::now();
     constexpr int TEST_VERSION = 10;
     for (int ver = 1; ver < TEST_VERSION; ver++) {
-        for (int i = 0; i < 20000; i++) {~
+        for (int i = 0; i < 20000; i++) {
             trie->Put(0, ver, kvs[i].key, kvs[i].value);
         }
         trie->Commit(ver);
@@ -91,6 +91,8 @@ int main() {
     // chrono::microseconds::period::num /
     //     chrono::microseconds::period::den;
     //     std::cout << "COMMIT: " << commit_latency << " s" << std::endl;
+    // std::cout << trie->Get(0, TEST_VERSION - 1, kvs[8].key) << std::endl;
+    // std::cout << kvs[8].value << std::endl;
     assert(trie->Get(0, TEST_VERSION - 1, kvs[8].key) == kvs[8].value);
     // DMMTrieProof merkle_proof = trie->GetProof(0, TEST_VERSION - 1, kvs[8].key);
     // for(int i = 0; i < merkle_proof.proofs.size(); i++) {

@@ -42,6 +42,8 @@ bool Joiner::WaitForOldVersion(uint64_t version) {
                 done_count++;
                 done[i] = true;
             }
+            else
+                this_thread::sleep_for(chrono::milliseconds(25));
 
             // }
             // else

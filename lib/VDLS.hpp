@@ -15,6 +15,7 @@
 #include <vector>
 #include <mutex>
 #include <shared_mutex>
+#include <atomic>
 
 using namespace std;
 
@@ -43,7 +44,7 @@ class VDLS {
   tuple<uint64_t, uint64_t, uint64_t> WriteValue(uint64_t version,
                                                  const string& key,
     const string& value) {
-    std::unique_lock<std::shared_mutex> lock(mutex_);
+    // std::unique_lock<std::shared_mutex> lock(mutex_);
     string record = to_string(version) + "," + key + "," + value + "\n";
     size_t record_size = record.size();
 
@@ -66,8 +67,10 @@ class VDLS {
       OpenAndMapWriteFile();
     }
 
+    uint64_t current_offset = current_offset_.fetch_add(record_size);
+
     // 写入新记录到写映射区域
-    memcpy(static_cast<char*>(write_map_) + current_offset_, record.c_str(),
+    memcpy(static_cast<char*>(write_map_) + current_offset, record.c_str(),
            record_size);
 
     // 同步更改到磁盘
@@ -75,9 +78,9 @@ class VDLS {
     //   throw runtime_error("Failed to sync changes to disk");
     // }
 
-    current_offset_ += record_size;
+    // current_offset_ += record_size;
 
-    return make_tuple(current_fileID_, current_offset_ - record_size,
+    return make_tuple(current_fileID_, current_offset,
                       record_size);
   }
 
@@ -146,7 +149,7 @@ class VDLS {
   // }
 
   string ReadValue(const tuple<uint64_t, uint64_t, uint64_t>& location) {
-    std::shared_lock<std::shared_mutex> lock(mutex_);
+    // std::shared_lock<std::shared_mutex> lock(mutex_);
     uint64_t fileID, offset, size;
     tie(fileID, offset, size) = location;
 
@@ -245,7 +248,8 @@ class VDLS {
  private:
   string file_path_;
   uint64_t current_fileID_;
-  uint64_t current_offset_;
+  std::atomic<uint64_t> current_offset_;
+  // uint64_t current_offset_;
   const uint64_t MaxFileSize = 64 * 1024 * 1024;  // 64MB
   // string buffer_;
   // int64_t buffer_fileID_;

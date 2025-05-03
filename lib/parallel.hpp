@@ -18,6 +18,7 @@
 
 // #define LOG
 // #define COLOR
+#define USE_THIRD_PARTY_LIBRARY
 
 #ifdef LOG
 #define MASTER_LOG
@@ -94,6 +95,7 @@ public:
         
         // 检查队列是否已满
         if (next_tail == head_.load(std::memory_order_acquire)) {
+            std::cout << "Queue is full" << std::endl;
             return false;  // 队列已满
         }
         

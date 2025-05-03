@@ -25,14 +25,27 @@ class TaskQueue {
             std::cout << "TaskQueue is stopped, cannot post task." << std::endl;
             return;
         }
+        #ifdef USE_THIRD_PARTY_LIBRARY
         queue_.enqueue(kvpair);
+        #else
+        while (!queue_.push_back(kvpair));
+        #endif
     }
 
     inline std::tuple<uint64_t, std::string, std::string> popTask() {
         std::tuple<uint64_t, std::string, std::string> task;
+        #ifdef USE_THIRD_PARTY_LIBRARY
         if (queue_.try_dequeue(task)) {
             return task;
         }
+        #else
+        if (queue_.size() > 0) {
+            task = std::move(queue_.front());
+            queue_.pop_front();
+            return task;
+        }
+        #endif
+
         return TaskQueue::empty_task_;
     }
 
@@ -45,11 +58,19 @@ class TaskQueue {
     }
 
     inline size_t size() const {
+        #ifdef USE_THIRD_PARTY_LIBRARY
         return queue_.size_approx();
+        #else
+        return queue_.size();
+        #endif
     }
 
     private:
+    #ifdef USE_THIRD_PARTY_LIBRARY
     moodycamel::ConcurrentQueue<std::tuple<uint64_t, std::string, std::string>> queue_;
+    #else
+    ConcurrentArray<std::tuple<uint64_t, std::string, std::string>> queue_{ 65536 };
+    #endif
     bool stop_;
     static std::tuple<uint64_t, std::string, std::string> empty_task_;
 };

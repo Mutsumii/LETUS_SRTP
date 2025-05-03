@@ -1,6 +1,8 @@
 #include "Worker.hpp"
 
-BasePage* Worker::GetPage(
+NibbleBucket** NibbleBucket::master_nibble_bucket_ = nullptr;  // 定义并初始化
+
+BasePage* NibbleBucket::GetPage(
     const PageKey& pagekey) {  // get a page by its pagekey
     // std::lock_guard<std::mutex> lock(pagekey_mutex_);
     auto it = lru_cache_.find(pagekey);
@@ -16,26 +18,32 @@ BasePage* Worker::GetPage(
     return nullptr;
 }
 
-pair<uint64_t, uint64_t> Worker::GetPageVersion(PageKey pagekey) {
+const pair<uint64_t, uint64_t> & NibbleBucket::GetPageVersion(PageKey pagekey) {
     auto it = page_versions_.find(pagekey.pid);
     if (it != page_versions_.end()) {
         return it->second;
     }
     return { 0, 0 };
 }
-void Worker::UpdatePageVersion(PageKey pagekey, uint64_t current_version,
+void NibbleBucket::UpdatePageVersion(PageKey pagekey, uint64_t current_version,
     uint64_t latest_basepage_version) {
     page_versions_[pagekey.pid] = { current_version, latest_basepage_version };
 }
 
-void Worker::PutPage(const PageKey& pagekey,
+void NibbleBucket::PutPage(const PageKey& pagekey,
     BasePage* page) {        // add page to cache
     // insert the pair of PageKey and BasePage* to the front
+    auto it = lru_cache_.find(pagekey);
+  if (it != lru_cache_.end()) {
+    delete it->second->second;
+    pagekeys_.erase(it->second);
+    lru_cache_.erase(it);
+  }
     pagekeys_.push_front(std::make_pair(pagekey, page));
     lru_cache_[pagekey] = pagekeys_.begin();
 }
 
-void Worker::UpdatePageKey(
+void NibbleBucket::UpdatePageKey(
     const PageKey& old_pagekey,
     const PageKey& new_pagekey) {  // update pagekey in lru cache
     auto it = lru_cache_.find(old_pagekey);
@@ -49,7 +57,7 @@ void Worker::UpdatePageKey(
     }
 }
 
-DeltaPage* Worker::GetDeltaPage(const string& pid) {
+DeltaPage* NibbleBucket::GetDeltaPage(const string& pid) {
     auto it = active_deltapages_.find(pid);
     if (it != active_deltapages_.end()) {
         return &it->second;  // return deltapage if it exiests
@@ -62,6 +70,62 @@ DeltaPage* Worker::GetDeltaPage(const string& pid) {
     }
 }
 
-void  Worker::WritePageCache(PageKey pagekey, Page* page) {
+void  NibbleBucket::WritePageCache(PageKey pagekey, Page* page) {
     page_cache_[pagekey] = page;
+}
+
+BasePage* Worker::GetPage(
+    const PageKey& pagekey) {  // get a page by its pagekey
+    auto bucket = GetNibbleBucket(GetNibbleValue(pagekey.pid));
+    if (bucket == nullptr) {
+        throw std::runtime_error("NibbleBucket not found");
+    }
+    return bucket->GetPage(pagekey);
+}
+
+DeltaPage* Worker::GetDeltaPage(const string& pid) {
+    auto bucket = GetNibbleBucket(GetNibbleValue(pid));
+    if (bucket == nullptr) {
+        throw std::runtime_error("NibbleBucket not found");
+    }
+    return bucket->GetDeltaPage(pid);
+}
+
+pair<uint64_t, uint64_t>  Worker::GetPageVersion(PageKey pagekey) {
+    auto bucket = GetNibbleBucket(GetNibbleValue(pagekey.pid));
+    if (bucket == nullptr) {
+        throw std::runtime_error("NibbleBucket not found");
+    }
+    return bucket->GetPageVersion(pagekey);
+}
+
+void  Worker::UpdatePageVersion(PageKey pagekey, uint64_t current_version, uint64_t latest_basepage_version) {
+    auto bucket = GetNibbleBucket(GetNibbleValue(pagekey.pid));
+    if (bucket == nullptr) {
+        throw std::runtime_error("NibbleBucket not found");
+    }
+    bucket->UpdatePageVersion(pagekey, current_version, latest_basepage_version);
+}
+
+void  Worker::PutPage(const PageKey& pagekey, BasePage* page) {
+    auto bucket = GetNibbleBucket(GetNibbleValue(pagekey.pid));
+    if (bucket == nullptr) {
+        throw std::runtime_error("NibbleBucket not found");
+    }
+    bucket->PutPage(pagekey, page);
+}
+
+void  Worker::UpdatePageKey(const PageKey& old_pagekey, const PageKey& new_pagekey) {
+    auto bucket = GetNibbleBucket(GetNibbleValue(old_pagekey.pid));
+    if (bucket == nullptr) {
+        throw std::runtime_error("NibbleBucket not found");
+    }
+    bucket->UpdatePageKey(old_pagekey, new_pagekey);
+}
+void  Worker::WritePageCache(PageKey pagekey, Page* page) {
+    auto bucket = GetNibbleBucket(GetNibbleValue(pagekey.pid));
+    if (bucket == nullptr) {
+        throw std::runtime_error("NibbleBucket not found");
+    }
+    bucket->WritePageCache(pagekey, page);
 }

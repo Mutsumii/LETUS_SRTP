@@ -30,6 +30,7 @@ class Master {
         const string& value);
 
     void Commit(uint64_t version);
+    void LoadBalance();
 
     void AddDeltaPageVersion(const string& pid, uint64_t version);
 
@@ -43,12 +44,13 @@ class Master {
     DMMTrie* trie_;
     // LSVPS* page_store_;
     VDLS* value_store_;
-    const uint8_t MAX_REGION_NUM = 5;
+    const uint8_t MAX_REGION_NUM = 4;
     vector<Region*> regions_;
     Joiner* joiner_;
     vector<ConcurrentArray<pair<uint64_t, list<BufferItem>>>> bottomup_buffers_;
     // std::unordered_map<int8_t, uint8_t> nibble_dict_;
     uint8_t nibble_dict_[256];
+    NibbleBucket* nibble_buckets_[256];
     uint8_t next_region_ = 0;
     // const size_t max_cache_size_ = 32;          // maximum pages in cache
     std::unordered_map<string, vector<uint64_t>>

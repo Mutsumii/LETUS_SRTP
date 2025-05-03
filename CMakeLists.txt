@@ -70,6 +70,6 @@ target_link_libraries(put_obs OpenSSL::SSL OpenSSL::Crypto ${GNUC_LIBRARIES})
 # add_executable(LSVPStest ${letus_tests})
 # target_link_libraries(LSVPStest letus GTest::GTest GTest::Main)
 
-add_library(letus STATIC ${letus_lib} ${letus_src})
-target_link_libraries(letus OpenSSL::SSL OpenSSL::Crypto)
+# add_library(letus STATIC ${letus_lib} ${letus_src})
+# target_link_libraries(letus OpenSSL::SSL OpenSSL::Crypto)
 # add_test(NAME LSVPStest COMMAND LSVPStest)
