@@ -17,7 +17,7 @@ class Master {
     friend class Joiner;
     friend class Region;
     public:
-    Master(VDLS* value_store);
+    Master(std::string data_path);
     ~Master() {
         for (auto& region : regions_) {
             delete region;
@@ -43,8 +43,8 @@ class Master {
     private:
     DMMTrie* trie_;
     // LSVPS* page_store_;
-    VDLS* value_store_;
-    const uint8_t MAX_REGION_NUM = 8;
+    // VDLS* value_store_;
+    const uint8_t MAX_REGION_NUM = 1;
     vector<Region*> regions_;
     Joiner* joiner_;
     vector<ConcurrentArray<pair<uint64_t, list<BufferItem>>>> bottomup_buffers_;

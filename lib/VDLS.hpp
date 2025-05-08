@@ -32,10 +32,10 @@ class VDLS {
   //       buffer_fileID_(-1),
   //       buffer_offset_(-1) {}
 
-  VDLS(string file_path = "/mnt/c/Users/qyf/Desktop/LETUS_prototype/data/")
+  VDLS(string file_path = "/mnt/c/Users/qyf/Desktop/LETUS_prototype/data/", string prefix = "")
       : current_fileID_(0),
         current_offset_(0),
-        file_path_(file_path),
+        file_path_(file_path + "data_file_" + prefix +"_"),
         write_map_(MAP_FAILED),
         read_map_(MAP_FAILED),
         read_map_fileID_(-1) {
@@ -69,11 +69,14 @@ class VDLS {
       }
       // std::shared_lock<std::shared_mutex> lock(mutex_);
 
-    uint64_t current_offset = current_offset_.fetch_add(record_size);
+    // uint64_t current_offset = current_offset_.fetch_add(record_size);
+    uint64_t current_offset = current_offset_;
 
     // 写入新记录到写映射区域
     memcpy(static_cast<char*>(write_map_) + current_offset, record.c_str(),
-           record_size);
+      record_size);
+
+    current_offset_ += record_size;
 
     // 同步更改到磁盘
     // if (msync(write_map_, MaxFileSize, MS_SYNC) == -1) {
@@ -182,7 +185,7 @@ class VDLS {
     uint64_t fileID, offset, size;
     tie(fileID, offset, size) = location;
 
-    ifstream file(file_path_ + "data_file_" + to_string(fileID) + ".dat");
+    ifstream file(file_path_  + to_string(fileID) + ".dat");
     if (!file) {
       throw runtime_error("Cannot open file");
     }
@@ -250,8 +253,8 @@ class VDLS {
  private:
   string file_path_;
   uint64_t current_fileID_;
-  std::atomic<uint64_t> current_offset_;
-  // uint64_t current_offset_;
+  // std::atomic<uint64_t> current_offset_;
+  uint64_t current_offset_;
   const uint64_t MaxFileSize = 64 * 1024 * 1024;  // 64MB
   // string buffer_;
   // int64_t buffer_fileID_;
@@ -265,7 +268,7 @@ class VDLS {
 
   void OpenAndMapWriteFile() {
     string filename =
-        file_path_ + "data_file_" + to_string(current_fileID_) + ".dat";
+        file_path_ + to_string(current_fileID_) + ".dat";
 
     // 打开或创建文件
     int fd = open(filename.c_str(), O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
@@ -289,7 +292,7 @@ class VDLS {
   }
 
   void OpenAndMapReadFile(uint64_t fileID) {
-    string filename = file_path_ + "data_file_" + to_string(fileID) + ".dat";
+    string filename = file_path_ + to_string(fileID) + ".dat";
 
     // 打开文件
     int fd = open(filename.c_str(), O_RDONLY);

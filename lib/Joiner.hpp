@@ -14,7 +14,7 @@ class Joiner : Worker{
     friend class Master;
     friend class Region;
     public:
-    Joiner(Master* master, VDLS* value_store);
+    Joiner(Master* master, std::string data_path);
     ~Joiner() {
         if (joiner_thread_.joinable())
             joiner_thread_.join();

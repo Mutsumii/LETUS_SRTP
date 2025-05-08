@@ -819,7 +819,7 @@ DMMTrie::DMMTrie(uint64_t tid, VDLS *value_store,
   page_cache_.clear();
   put_cache_.clear();
   deltapage_versions_.clear();
-  master_ = new Master(value_store);
+  // master_ = new Master(value_store);
 }
 
 bool DMMTrie::Put(uint64_t tid, uint64_t version, const string &key,

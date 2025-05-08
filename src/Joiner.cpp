@@ -2,7 +2,8 @@
 #include "DMMTrie.hpp"
 #include <chrono>
 
-Joiner::Joiner(Master* master, VDLS* value_store) : master_(master), value_store_(value_store) {
+Joiner::Joiner(Master* master, std::string data_path) : master_(master) {
+    value_store_ = new VDLS(data_path, "joiner");
     joiner_thread_ = thread(std::bind(&Joiner::run, this));
 #ifdef JOINER_LOG
     PrintLog("STARTED");

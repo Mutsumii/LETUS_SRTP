@@ -62,8 +62,8 @@ int main() {
     // LSVPS* page_store = new LSVPS(index_path);
     std::string data_path;
     data_path = "/home/xuwenhao/DMMTree/data/";//your own path
-    VDLS* value_store = new VDLS(data_path);
-    Master* trie = new Master(value_store);
+    // VDLS* value_store = new VDLS(data_path);
+    Master* trie = new Master(data_path);
     // page_store->RegisterTrie(trie);
 
     KVPair kvs[100000];
