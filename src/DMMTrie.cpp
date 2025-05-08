@@ -452,36 +452,38 @@ DeltaPage::DeltaPage(const DeltaPage &other) : Page(other) {
   deltaitems_ = other.deltaitems_;
 }
 
-DeltaPage::DeltaPage(char *buffer) : b_update_count_(0) {
-  Page({0, 0, true, ""});  // 临时初始化，后面会更新
+// DeltaPage::DeltaPage(char *buffer) : b_update_count_(0) {
+//   Page({0, 0, true, ""});  // 临时初始化，后面会更新
 
-  size_t current_size = 0;
+//   size_t current_size = 0;
 
-  last_pagekey_.version =
-      *(reinterpret_cast<uint64_t *>(buffer + current_size));
-  current_size += sizeof(uint64_t);
-  last_pagekey_.tid = *(reinterpret_cast<uint64_t *>(buffer + current_size));
-  current_size += sizeof(uint64_t);
-  last_pagekey_.type = *(reinterpret_cast<bool *>(buffer + current_size));
-  current_size += sizeof(bool);
-  size_t pid_size = *(reinterpret_cast<size_t *>(buffer + current_size));
-  current_size += sizeof(pid_size);
-  last_pagekey_.pid = string(buffer + current_size,
-                             pid_size);  // deserialize pid (pid_size bytes)
-  current_size += pid_size;
+//   last_pagekey_.version =
+//       *(reinterpret_cast<uint64_t *>(buffer + current_size));
+//   current_size += sizeof(uint64_t);
+//   last_pagekey_.tid = *(reinterpret_cast<uint64_t *>(buffer + current_size));
+//   current_size += sizeof(uint64_t);
+//   last_pagekey_.type = *(reinterpret_cast<bool *>(buffer + current_size));
+//   current_size += sizeof(bool);
+//   size_t pid_size = *(reinterpret_cast<size_t *>(buffer + current_size));
+//   current_size += sizeof(pid_size);
+//   last_pagekey_.pid = string(buffer + current_size,
+//                              pid_size);  // deserialize pid (pid_size bytes)
+//   current_size += pid_size;
 
-  update_count_ = *(reinterpret_cast<uint16_t *>(buffer + current_size));
-  current_size += sizeof(uint16_t);
+//   update_count_ = *(reinterpret_cast<uint16_t *>(buffer + current_size));
+//   current_size += sizeof(uint16_t);
 
-  for (int i = 0; i < update_count_; i++) {
-    deltaitems_.push_back(DeltaItem(buffer, current_size));
-  }
+//   for (int i = 0; i < update_count_; i++) {
+//     deltaitems_.push_back(DeltaItem(buffer, current_size));
+//   }
 
-  // 反序列化完成后，更新 PageKey
-  PageKey pagekey = {last_pagekey_.version, last_pagekey_.tid, true,
-                     last_pagekey_.pid};
-  this->SetPageKey(pagekey);
-}
+//   // 反序列化完成后，更新 PageKey
+//   PageKey pagekey = {last_pagekey_.version, last_pagekey_.tid, true,
+//                      last_pagekey_.pid};
+//   this->SetPageKey(pagekey);
+// }
+
+DeltaPage::DeltaPage(char * page_data, const string& pid): Page(page_data, {0,0,false,pid}){}
 
 void DeltaPage::AddIndexNodeUpdate(uint8_t location, uint64_t version,
                                    const string &hash, uint8_t index,
@@ -553,11 +555,11 @@ BasePage::BasePage(Worker* worker, Node *root, const string &pid)
 }
 
 void BasePage::SetAttribute(Worker* worker, Node *root,
-  const string& pid) {
+  const string& pid, char* page_data) {
   // bucket_ = bucket;
   worker_ = worker;
   root_ = root;
-    Page({0, 0, false, pid});
+  Page(page_data, { 0, 0, false, pid });
 }
 
 BasePage::BasePage(const BasePage &other) : Page(other), worker_(other.worker_) {

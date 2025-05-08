@@ -175,11 +175,13 @@ class DeltaPage : public Page {
     DeltaItem(char *buffer, size_t &current_size);
     void SerializeTo(char *buffer, size_t &current_size) const;
   };
+  // DeltaPage()
 
   DeltaPage(PageKey last_pagekey = {0, 0, true, ""}, uint16_t update_count = 0,
             uint16_t b_update_count = 0);
-  DeltaPage(char *buffer);
-  DeltaPage(const DeltaPage &other);
+  // DeltaPage(char *buffer);
+  DeltaPage(char* page_data, const string& pid);
+  DeltaPage(const DeltaPage& other);
   void AddIndexNodeUpdate(uint8_t location, uint64_t version,
                           const string &hash, uint8_t index,
                           const string &child_hash);
@@ -208,7 +210,11 @@ class BasePage : public Page {
       const string &pid = "");
   BasePage(Worker* worker_, char* buffer);
   BasePage(Worker* worker_, string key, string pid, string nibbles);
-  BasePage(const BasePage &other);  // deep copy
+  BasePage(const BasePage& other);  // deep copy
+
+  BasePage(Worker* worker, Node *root,
+    const string& pid, char* page_data): worker_(worker),root_(root), Page(page_data, {0, 0, false, pid}) {
+  }
   ~BasePage();
   void SerializeTo();
   void UpdatePage(uint64_t version,
@@ -219,7 +225,7 @@ class BasePage : public Page {
   void UpdateDeltaItem(const DeltaPage::DeltaItem &deltaitem);
   Node* GetRoot() const;
   void SetAttribute(Worker* worker_ = nullptr, Node *root = nullptr,
-    const string &pid = "");
+    const string &pid = "", char* page_data = nullptr);
 
   private:
   Worker* worker_;

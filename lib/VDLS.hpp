@@ -45,12 +45,12 @@ class VDLS {
   tuple<uint64_t, uint64_t, uint64_t> WriteValue(uint64_t version,
                                                  const string& key,
     const string& value) {
-    // std::unique_lock<std::shared_mutex> lock(mutex_);
-    string record = to_string(version) + "," + key + "," + value + "\n";
-    size_t record_size = record.size();
-
-    // 检查是否需要创建新文件
-    if (current_offset_ + record_size > MaxFileSize) {
+      string record = to_string(version) + "," + key + "," + value + "\n";
+      size_t record_size = record.size();
+      
+      // 检查是否需要创建新文件
+      if (current_offset_ + record_size > MaxFileSize) {
+      // std::unique_lock<std::shared_mutex> lock(mutex_);
     // 同步更改到磁盘
     if (msync(write_map_, MaxFileSize, MS_SYNC) == -1) {
       throw runtime_error("Failed to sync changes to disk");
@@ -66,7 +66,8 @@ class VDLS {
 
       // 重新打开和映射新文件
       OpenAndMapWriteFile();
-    }
+      }
+      // std::shared_lock<std::shared_mutex> lock(mutex_);
 
     uint64_t current_offset = current_offset_.fetch_add(record_size);
 

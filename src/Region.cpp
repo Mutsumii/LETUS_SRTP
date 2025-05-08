@@ -124,6 +124,11 @@ void Region::Commit(uint64_t version) {
     region_version_ = version;
     }
 
+    chrono::time_point<chrono::system_clock> start;
+    chrono::time_point<chrono::system_clock> end;
+    vector<chrono::microseconds> durations;
+    durations.resize(3, chrono::microseconds(0));
+    // start = chrono::system_clock::now();
     map<string, set<string>, decltype(CompareStrings)> updates(CompareStrings);
 
       for (const auto &it : put_cache_) {
@@ -134,7 +139,10 @@ void Region::Commit(uint64_t version) {
           updates[it.first.substr(0, i)].insert(it.first.substr(i, 2));
         }
       }
-  //     set<string> pids;
+      // end = chrono::system_clock::now();
+      // auto duration = chrono::duration_cast<chrono::microseconds>(end - start);
+      // PrintLog("Time taken to update put_cache_: " + to_string(duration.count()) + " microseconds");
+      //     set<string> pids;
 
   // for (const auto &it : put_cache_) {
   //   for (int i = it.first.size() % 2 == 0 ? it.first.size()
@@ -143,8 +151,10 @@ void Region::Commit(uint64_t version) {
   //     pids.insert(it.first.substr(0, i));
   //   }
   // }
-  
-  for (const auto& it : updates) {
+
+      size_t cnt = 0;
+      // start = chrono::system_clock::now();
+      for (const auto& it : updates) {
     string pid = it.first;
     // PrintLog(string("Wait ") + to_string(GetNibbleValue(pid)));
     // NibbleBucket* bucket = nullptr;
@@ -152,22 +162,34 @@ void Region::Commit(uint64_t version) {
 
     // while (!bucket);
     // get the latest version number of a page
-        uint64_t page_version = GetPageVersion({ 0, 0, false, pid }).first;
+
+    // start = chrono::system_clock::now();
+
+    uint64_t page_version = GetPageVersion({ 0, 0, false, pid }).first;
         PageKey pagekey = {version, 0, false, pid},
                 old_pagekey = {page_version, 0, false, pid};
-        BasePage *page = GetPage(old_pagekey);  // load the page into lru cache
-    
+        BasePage* page = GetPage(old_pagekey);  // load the page into lru cache
         if (page == nullptr) {
           // GetPage returns nullptr means that the pid is new
-          // page = new BasePage(this, nullptr, pid);
-          page = pool_.allocate();
-          page->SetAttribute(this, nullptr, pid);
+          page = new (pool_.allocate()) BasePage(this, nullptr, pid,page_pool_.allocate());
+          // cnt++;
+          // start = chrono::system_clock::now();
+          // page = pool_.allocate();
+          // end = chrono::system_clock::now();
+          // durations[0] += chrono::duration_cast<chrono::microseconds>(end - start);
+          // start = chrono::system_clock::now();
+          // page->SetAttribute(this, nullptr, pid, page_pool_.allocate());
+          // end = chrono::system_clock::now();
+          // durations[1] += chrono::duration_cast<chrono::microseconds>(end - start);
+          // start = chrono::system_clock::now();
           PutPage(pagekey, page);  // add the newly generated page into cache
+          // end = chrono::system_clock::now();
+          // durations[2] += chrono::duration_cast<chrono::microseconds>(end - start);
         }
-    
-        DeltaPage *deltapage = GetDeltaPage(pid);
-    
-        for (const auto &nibbles : it.second) {
+
+        DeltaPage* deltapage = GetDeltaPage(pid);
+
+        for (const auto& nibbles : it.second) {
           // path is key when page is leaf page, pid of child page when page is
           // index page
           string path = pid + nibbles;
@@ -179,12 +201,23 @@ void Region::Commit(uint64_t version) {
             value = put_cache_[path];
             location = value_store_->WriteValue(version, path, value);
           }
-        page->UpdatePage(version, location, value, nibbles, child_hash,
-                             deltapage, pagekey);
-        }
-    
+          page->UpdatePage(version, location, value, nibbles, child_hash,
+            deltapage, pagekey);
+          }
+        // start = chrono::system_clock::now();
         UpdatePageKey(old_pagekey, pagekey);
+        // end = chrono::system_clock::now();
+        // durations[4] += chrono::duration_cast<chrono::microseconds>(end - start);
       }
+      // PrintLog("Total number of pages created: " + to_string(cnt));
+      // for(int i = 0; i < durations.size(); i++) {
+      //   PrintLog("Time taken to update page phase" + to_string(i) + ": " + to_string(durations[i].count()) + " microseconds");
+      // }
+
+      // end = chrono::system_clock::now();
+      // auto duration = chrono::duration_cast<chrono::microseconds>(end - start);
+      // PrintLog("Time taken to update page: " + to_string(duration.count()) + " microseconds");
+      // start = chrono::system_clock::now();
       for (const auto& it : put_cache_) {
         std::string nibbles = it.first.substr(0, 2);
         // NibbleBucket* bucket = GetNibbleBucket(GetNibbleValue(nibbles));
@@ -212,6 +245,9 @@ void Region::Commit(uint64_t version) {
                 buffer_.push_back(make_pair(version, list<BufferItem>{result}));
           }
       }
+      // end = chrono::system_clock::now();
+      // duration = chrono::duration_cast<chrono::microseconds>(end - start);
+      // PrintLog("Time taken to update buffer: " + to_string(duration.count()) + " microseconds");
       // Push empty buffer for next version, indicating that the version is committed
       while(!buffer_.push_back(make_pair(version + 1, list<BufferItem>{}))) {
         PrintLog("Buffer is full, waiting for commit");
@@ -234,7 +270,7 @@ void Region::Stop() {
   queue_.stopQueue();
   // master_->running_region_num_ -= 1;
   // region_thread_.join();
-  while (region_version_ != commited_version_);
+  // while (region_version_ != commited_version_);
   if (buffer_.size() == 0) {
     PrintLog("Empty Buffer Before Stop");
     throw std::runtime_error("Empty Buffer Before Stop");

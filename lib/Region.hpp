@@ -80,7 +80,7 @@ class Region : Worker{
     friend class Master;
 public:
     Region(VDLS* value_store, ConcurrentArray<pair<uint64_t, std::list<BufferItem>>>& buffer, Master* master, size_t id) :
-        value_store_(value_store), stop_(false), buffer_(buffer), master_(master), thread_id_(id) {
+        value_store_(value_store), stop_(false), buffer_(buffer), master_(master), thread_id_(id), Worker(true) {
         // PrintLog("Creating Region " + std::to_string(thread_id_));
         buffer_.push_back(make_pair(1, list<BufferItem>{})); // buffer the first version
         // PrintLog("Buffered item for version 1");

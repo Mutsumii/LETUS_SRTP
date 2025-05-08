@@ -5,6 +5,9 @@
 #include <string>
 #include <cstring>
 #include <memory>
+#include <cstdlib>
+#include <cstring>
+#include <new>
 
 static constexpr int PAGE_SIZE = 12288;  // 每个页面的大小为12KB
 
@@ -118,18 +121,108 @@ class Page {  //设置成抽象类 序列化 反序列化 getPageKey setPageKey 
               // DMMTriePage DeltaPage
 
  private:
-  alignas(4096) char data_[PAGE_SIZE]{};
-  PageKey pagekey_;
+//  alignas(4096) char internal[PAGE_SIZE]{};
+alignas(4096) char* data_ = nullptr;
+ PageKey pagekey_;
+ bool owns_data_ = false;
 
- public:
-  Page() {}
+ static char* allocate_aligned() {
+  return static_cast<char*>(std::aligned_alloc(4096, PAGE_SIZE));
+}
 
-  Page(PageKey pagekey) : pagekey_(pagekey) {}
+static void free_aligned(char* ptr) {
+  std::free(ptr);
+}
 
-  Page(const Page& other){
-    memcpy(data_, other.data_, PAGE_SIZE);
-    pagekey_ = other.pagekey_;
+  public:
+  // 默认构造：动态分配对齐内存
+  Page() : data_(allocate_aligned()), owns_data_(true) {
+    std::memset(data_, 0, PAGE_SIZE);
+}
+
+// 构造时传入 PageKey
+Page(PageKey pagekey) : data_(allocate_aligned()), owns_data_(true), pagekey_(pagekey) {
+    std::memset(data_, 0, PAGE_SIZE);
+}
+
+// 构造时传入外部数据（不分配内存）
+Page(char* external_data, PageKey pagekey) : data_(external_data), owns_data_(false), pagekey_(pagekey) {}
+
+// 析构：仅释放拥有的数据
+~Page() {
+    if (owns_data_) {
+        free_aligned(data_);
+    }
+}
+
+Page(const Page& other) : owns_data_(true), pagekey_(other.pagekey_) {
+      // 深拷贝内部数据
+      data_ = allocate_aligned();
+      std::memcpy(data_, other.data_, PAGE_SIZE);
+
+}
+// 拷贝赋值
+Page& operator=(const Page& other) {
+  if (this != &other) {
+      // 释放原有数据
+      if (owns_data_) {
+          free_aligned(data_);
+      }
+
+      // 复制数据和状态
+      owns_data_ = other.owns_data_;
+      pagekey_ = other.pagekey_;
+      // if (other.owns_data_) {
+          data_ = allocate_aligned();
+          std::memcpy(data_, other.data_, PAGE_SIZE);
+      // } else {
+      //     data_ = other.data_;
+      // }
   }
+  return *this;
+}
+
+
+// 移动构造
+Page(Page&& other) noexcept 
+    : data_(other.data_), owns_data_(other.owns_data_), pagekey_(other.pagekey_) {
+    other.owns_data_ = false; // 防止双重释放
+}
+
+// 移动赋值
+Page& operator=(Page&& other) noexcept {
+    if (this != &other) {
+        if (owns_data_) {
+            free_aligned(data_);
+        }
+        data_ = other.data_;
+        owns_data_ = other.owns_data_;
+        pagekey_ = other.pagekey_;
+        other.owns_data_ = false;
+    }
+    return *this;
+}
+//   Page() {
+//   // data_ = static_cast<char*>(::operator new(PAGE_SIZE, std::align_val_t{PAGE_SIZE}));
+//    // data_ = new char[PAGE_SIZE];
+//   // memset(data_, 0, PAGE_SIZE);
+//  }
+
+//  Page(PageKey pagekey) : pagekey_(pagekey) {
+//   // data_ = static_cast<char*>(::operator new(PAGE_SIZE, std::align_val_t{PAGE_SIZE}));
+//    // data_ = new char[PAGE_SIZE];
+//     // memset(data_, 0, PAGE_SIZE);
+//   }
+
+//   // Page(char* data) {
+//   //   data_ = data;
+//   // }
+
+//   Page(const Page& other) {
+//     // data_ = new char[PAGE_SIZE];
+//     memcpy(data_, other.data_, PAGE_SIZE);
+//     pagekey_ = other.pagekey_;
+//   }
 
   const PageKey& GetPageKey() const {
     // std::cout << "[GetPageKey]" << pagekey_.pid << std::endl;

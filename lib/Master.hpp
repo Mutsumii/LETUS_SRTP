@@ -44,7 +44,7 @@ class Master {
     DMMTrie* trie_;
     // LSVPS* page_store_;
     VDLS* value_store_;
-    const uint8_t MAX_REGION_NUM = 3;
+    const uint8_t MAX_REGION_NUM = 8;
     vector<Region*> regions_;
     Joiner* joiner_;
     vector<ConcurrentArray<pair<uint64_t, list<BufferItem>>>> bottomup_buffers_;
