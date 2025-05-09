@@ -57,17 +57,20 @@ typedef struct KVPair
 } KVPair;
 
 
-int main() {
+int main(int argc, char* argv[]) {
     std::string index_path = "/home/xuwenhao/DMMTree/";
     // LSVPS* page_store = new LSVPS(index_path);
     std::string data_path;
     data_path = "/home/xuwenhao/DMMTree/data/";//your own path
     // VDLS* value_store = new VDLS(data_path);
-    Master* trie = new Master(data_path);
+    size_t max_region_num = atoi(argv[1]);
+    size_t key_len = atoi(argv[2]);
+    Master* trie = new Master(data_path, max_region_num);
+    // std::cerr << "Max Region Num: " << max_region_num << std::endl;
     // page_store->RegisterTrie(trie);
 
     KVPair kvs[100000];
-    int key_len = 5;
+    // int key_len = 5;
     // for (int i = 0; i < 50000; i++) {
     //     char buffer[20];  // 假设数字不会超过 20 位
     //     sprintf(buffer, "%d", i);  // 格式化输出，补零
@@ -94,13 +97,13 @@ int main() {
     //     kvs[9] = { "33333", "22222222222222222222222222222222" };
     // }
     // auto random_keys = generateRandomNumbers(100000);
-    auto random_keys = generate_multiple_hex_strings(100000, 16);
-    for (int i = 0; i < 100000; i++) {
-        kvs[i].key = random_keys[i];
-        // kvs[i].key = std::to_string(random_keys[i]);
-        kvs[i].value = "";
-        kvs[i].value.append(32, RandomPrintChar());
-    }
+    // auto random_keys = generate_multiple_hex_strings(100000, 32);
+    // for (int i = 0; i < 100000; i++) {
+    //     kvs[i].key = random_keys[i];
+    //     // kvs[i].key = std::to_string(random_keys[i]);
+    //     kvs[i].value = "";
+    //     kvs[i].value.append(32, RandomPrintChar());
+    // }
     // std::cout << "KVPairs Generated." << std::endl;
 
     // std::cout << "KVPairs Generated." << std::endl;
@@ -108,6 +111,13 @@ int main() {
     // auto start = chrono::system_clock::now();
     constexpr int TEST_VERSION = 16;
     for (int ver = 1; ver <= TEST_VERSION; ver++) {
+        auto random_keys = generate_multiple_hex_strings(100000, key_len);
+        for (int i = 0; i < 100000; i++) {
+            kvs[i].key = random_keys[i];
+            // kvs[i].key = std::to_string(random_keys[i]);
+            kvs[i].value = "";
+            kvs[i].value.append(32, RandomPrintChar());
+        }
         for (int i = 0; i < 100000; i++) {
             trie->Put(0, ver, kvs[i].key, kvs[i].value);
         }
@@ -123,7 +133,7 @@ int main() {
     //     std::cout << "COMMIT: " << commit_latency << " s" << std::endl;
     // std::cout << trie->Get(0, TEST_VERSION - 1, kvs[8].key) << std::endl;
     // std::cout << kvs[8].value << std::endl;
-    assert(trie->Get(0, TEST_VERSION, kvs[8].key) == kvs[8].value);
+    assert(trie->Get(0, TEST_VERSION, kvs[99999].key) == kvs[99999].value);
     // DMMTrieProof merkle_proof = trie->GetProof(0, TEST_VERSION - 1, kvs[8].key);
     // for(int i = 0; i < merkle_proof.proofs.size(); i++) {
     //     std::cout << "Proof " << i << ": " << merkle_proof.proofs[i].index << std::endl;

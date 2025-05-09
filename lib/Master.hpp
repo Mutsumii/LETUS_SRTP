@@ -17,7 +17,7 @@ class Master {
     friend class Joiner;
     friend class Region;
     public:
-    Master(std::string data_path);
+    Master(std::string data_path, size_t max_region_num = 8);
     ~Master() {
         for (auto& region : regions_) {
             delete region;
