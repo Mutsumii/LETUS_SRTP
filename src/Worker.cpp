@@ -35,7 +35,7 @@ void NibbleBucket::PutPage(const PageKey& pagekey,
     // insert the pair of PageKey and BasePage* to the front
     auto it = lru_cache_.find(pagekey);
   if (it != lru_cache_.end()) {
-    delete it->second->second;
+    // delete it->second->second;
     pagekeys_.erase(it->second);
     lru_cache_.erase(it);
   }
@@ -122,7 +122,7 @@ void  Worker::PutPage(const PageKey& pagekey, BasePage* page) {
     // }
     auto it = lru_cache_.find(pagekey);
     if (it != lru_cache_.end()) {
-      delete it->second->second;
+    //   delete it->second->second;
       pagekeys_.erase(it->second);
       lru_cache_.erase(it);
     }

@@ -110,15 +110,17 @@ int main(int argc, char* argv[]) {
     auto start = chrono::system_clock::now();
     // auto start = chrono::system_clock::now();
     constexpr int TEST_VERSION = 16;
+    size_t kvpairs = atoi(argv[3]);
     for (int ver = 1; ver <= TEST_VERSION; ver++) {
-        auto random_keys = generate_multiple_hex_strings(100000, key_len);
-        for (int i = 0; i < 100000; i++) {
+        auto random_keys = generate_multiple_hex_strings(kvpairs, key_len);
+        for (int i = 0; i < kvpairs; i++) {
             kvs[i].key = random_keys[i];
             // kvs[i].key = std::to_string(random_keys[i]);
             kvs[i].value = "";
             kvs[i].value.append(32, RandomPrintChar());
         }
-        for (int i = 0; i < 100000; i++) {
+        random_keys.clear();
+        for (int i = 0; i < kvpairs; i++) {
             trie->Put(0, ver, kvs[i].key, kvs[i].value);
         }
         trie->Commit(ver);
@@ -133,7 +135,7 @@ int main(int argc, char* argv[]) {
     //     std::cout << "COMMIT: " << commit_latency << " s" << std::endl;
     // std::cout << trie->Get(0, TEST_VERSION - 1, kvs[8].key) << std::endl;
     // std::cout << kvs[8].value << std::endl;
-    assert(trie->Get(0, TEST_VERSION, kvs[99999].key) == kvs[99999].value);
+    assert(trie->Get(0, TEST_VERSION, kvs[kvpairs-1].key) == kvs[kvpairs-1].value);
     // DMMTrieProof merkle_proof = trie->GetProof(0, TEST_VERSION - 1, kvs[8].key);
     // for(int i = 0; i < merkle_proof.proofs.size(); i++) {
     //     std::cout << "Proof " << i << ": " << merkle_proof.proofs[i].index << std::endl;
