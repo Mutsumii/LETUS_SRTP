@@ -109,8 +109,9 @@ int main(int argc, char* argv[]) {
     // std::cout << "KVPairs Generated." << std::endl;
     auto start = chrono::system_clock::now();
     // auto start = chrono::system_clock::now();
-    constexpr int TEST_VERSION = 16;
+    // constexpr int TEST_VERSION = 16;
     size_t kvpairs = atoi(argv[3]);
+    size_t TEST_VERSION = atoi(argv[4]);
     for (int ver = 1; ver <= TEST_VERSION; ver++) {
         auto random_keys = generate_multiple_hex_strings(kvpairs, key_len);
         for (int i = 0; i < kvpairs; i++) {

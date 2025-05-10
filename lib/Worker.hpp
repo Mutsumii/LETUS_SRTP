@@ -72,8 +72,8 @@ class Worker {
     Worker(bool pool_init = false) {
         if (pool_init) {
             pool_.reserve();
-            page_pool_.reserve();
         }
+        page_pool_.reserve();
     }
     BasePage* GetPage(const PageKey& pagekey);
     DeltaPage* GetDeltaPage(const string& pid);
