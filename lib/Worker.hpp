@@ -120,5 +120,5 @@ class Worker {
     std::unordered_map<std::string, std::pair<uint64_t, uint64_t>> page_versions_;  // current version, latest basepage version
     ElementPool<BasePage> pool_;
     PagePool page_pool_;
-    // ElementPool<DeltaPage> pool_delta_;
+    ElementPool<DeltaPage> pool_delta_;
 };

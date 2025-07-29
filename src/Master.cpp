@@ -52,25 +52,16 @@ const std::string& GetNibble(uint8_t nibble_value) {
 //     }
 // }
 
-Master::Master(std::string data_path, size_t max_region_num): MAX_REGION_NUM(max_region_num) {
+Master::Master(std::string data_path, size_t max_region_num) : MAX_REGION_NUM(max_region_num),current_version_(0) {
     regions_.reserve(MAX_REGION_NUM);
+    value_store_ = new VDLS(data_path, "global");
     bottomup_buffers_ = vector<ConcurrentArray<pair<uint64_t, list<BufferItem>>>>(MAX_REGION_NUM);
-    // for (uint8_t i = 0; i < 255; i++) {
-    //     nibble_dict_[i] = 255;
-    //     nibble_buckets_[i] = std::make_unique<NibbleBucket>();
-    // }
-    // NibbleBucket::master_nibble_bucket_ = this->nibble_buckets_;
-    // PrintLog(string("Master Nibble Bucket: ") + to_string(reinterpret_cast<uintptr_t>(nibble_buckets_)));
+    //给各个Region分配nibble字典
     for (uint8_t i = 0; i < MAX_REGION_NUM; i++) {
         // PrintLog("Creating Region " + to_string(i));
         auto new_region = new Region(data_path, bottomup_buffers_.at(i), this, i);
         for (uint16_t j = i; j < 256; j += MAX_REGION_NUM) {
             nibble_dict_[j] = i;
-            // new_region->nibble_buckets_[j] = std::make_unique<NibbleBucket>(j);
-            // new_region->nibble_buckets_[j] = new NibbleBucket(j);
-            // // nibble_buckets_[j] = new_region->nibble_buckets_[j].get();
-            // nibble_buckets_[j] = new_region->nibble_buckets_[j];
-            // nibble_buckets_[j]->SetOwnerRegion(i);
         }
         regions_.push_back(new_region);
         // PrintLog("Region " + to_string(i) + " created");
@@ -203,7 +194,7 @@ std::string Master::Get(uint64_t tid, uint64_t version, const std::string& key) 
     cout << "location:" << get<0>(location) << " " << get<1>(location) << " "
         << get<2>(location) << endl;
 #endif
-    string value = regions_[region_id]->value_store_->ReadValue(location);
+    string value = value_store_->ReadValue(location);
 #ifdef MASTER_LOG
     cout << "Key " << key << " has value " << value << " at version " << version
         << endl;
@@ -267,7 +258,7 @@ DMMTrieProof Master::GetProof(uint64_t tid, uint64_t version,
             leafnode = static_cast<LeafNode*>(page->GetRoot());
         }
     }
-    merkle_proof.value = regions_[region_id]->value_store_->ReadValue(leafnode->GetLocation());
+    merkle_proof.value = value_store_->ReadValue(leafnode->GetLocation());
     reverse(merkle_proof.proofs.begin(), merkle_proof.proofs.end());
     return merkle_proof;
 }

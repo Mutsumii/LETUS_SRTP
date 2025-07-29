@@ -69,7 +69,7 @@ int main(int argc, char* argv[]) {
     // std::cerr << "Max Region Num: " << max_region_num << std::endl;
     // page_store->RegisterTrie(trie);
 
-    KVPair kvs[100000];
+    std::vector<KVPair> kvs(100000);
     // int key_len = 5;
     // for (int i = 0; i < 50000; i++) {
     //     char buffer[20];  // 假设数字不会超过 20 位

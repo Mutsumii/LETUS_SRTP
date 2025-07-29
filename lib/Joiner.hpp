@@ -18,6 +18,7 @@ class Joiner : Worker{
     ~Joiner() {
         if (joiner_thread_.joinable())
             joiner_thread_.join();
+        delete value_store_;
     }
     bool WaitForOldVersion(uint64_t version);
 

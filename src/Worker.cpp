@@ -95,10 +95,9 @@ DeltaPage* Worker::GetDeltaPage(const string& pid) {
         return it->second;  // return deltapage if it exiests
     }
     else {
-        // DeltaPage* new_page=  new  (pool_delta_.allocate()) DeltaPage (page_pool_.allocate(), pid);
-        DeltaPage new_page(page_pool_.allocate(), pid);
+        DeltaPage* new_page=  new(pool_delta_.allocate()) DeltaPage(page_pool_.allocate(), pid);
         // new_page.SetLastPageKey(PageKey{ 0, 0, false, pid });
-        active_deltapages_[pid] = &new_page;
+        active_deltapages_[pid] = new_page;
         return active_deltapages_[pid];
     }
 }

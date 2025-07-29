@@ -16,7 +16,10 @@
 
 class TaskQueue {
     public:
-    TaskQueue() {}
+    TaskQueue() {
+        stop_ = false;
+        empty_task_ = std::make_tuple(0, "", "");
+    }
 
     ~TaskQueue() = default;
 
@@ -111,7 +114,6 @@ public:
     void Join();
 
     Master* master_;
-    VDLS* value_store_;
     TaskQueue queue_;
 
     const size_t thread_id_;
