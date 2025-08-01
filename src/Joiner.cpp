@@ -2,14 +2,12 @@
 #include "DMMTrie.hpp"
 #include <chrono>
 
-Joiner::Joiner(Master* master, std::string data_path) : master_(master) {
-    value_store_ = new VDLS(data_path, "joiner");
+Joiner::Joiner(Master* master) : master_(master) {
     joiner_thread_ = thread(std::bind(&Joiner::run, this));
 #ifdef JOINER_LOG
     PrintLog("STARTED");
 #endif
 }
-
 bool Joiner::WaitForOldVersion(uint64_t version) {
     bool done[master_->MAX_REGION_NUM];
     memset(done, false, sizeof(done));
@@ -107,6 +105,7 @@ void Joiner::WriteAllBufferItems() {
     //       else {  // (indexnode + leafnode) or leafnode
     //         PrintLog("Commit Phase 2-1-2");
     //         value = item.value_;
+    //         value_store_ = GetValueStore();
     //         // location = value_store_->WriteValue(version_, nibbles, value);
     //       }
     //       page->UpdatePage(version_, location, value, nibbles, child_hash,

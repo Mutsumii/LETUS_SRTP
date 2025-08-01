@@ -22,6 +22,7 @@
 #include <cstring>
 #include <chrono>
 #include <filesystem>
+#include "third_party/blockingconcurrentqueue.h"  // 包含阻塞无锁队列库
 
 using namespace std;
 
@@ -40,89 +41,76 @@ public:
     }
 
     ~VDLS() {
-        {
-            lock_guard<mutex> lock(mtx_);
-            stop_flag_ = true; // 设置停止标志
-        }
-        cv_.notify_all(); // 唤醒可能在等待的写线程
+        stop_flag_.store(true); // 设置停止标志
+        //给出退出信号
+        write_queue_.enqueue({ nullptr, -1, 0, 0 }); // 发送退出信号到写线程
         if (write_thread_.joinable()) {
             write_thread_.join();
         }
-        if (write_map_ != MAP_FAILED) {
-            //最后刷盘
-            msync(write_map_, MaxFileSize, MS_SYNC);
-            munmap(write_map_, MaxFileSize);
-        }
+        RemainingWrite(); // 确保所有剩余的写入任务都被处理
         if (read_map_ != MAP_FAILED) {
             munmap(read_map_, MaxFileSize);
         }
-
     }
-
-    // 工作线程处理写入请求，使用unique_ptr避免字符串拷贝
+    
     tuple<int, size_t, size_t> WriteValue(uint64_t version, const string& key, const string& value) {
         auto record_ptr = make_unique<string>(to_string(version) + "," + key + "," + value + "\n");
         size_t record_size = record_ptr->size();
 
         int current_fileID;
         size_t offset;
-    
-        // 原子地计算文件ID和偏移量，处理文件切换
+
+        // 原子地预留空间并处理文件切换
         while (true) {
             current_fileID = current_fileID_.load();
-            offset = current_offset_.fetch_add(record_size);
+            offset = current_offset_.load();
 
             // 检查是否需要切换文件
-            if (offset + record_size <= MaxFileSize) {
-                break; // 无需切换，直接使用当前文件
+            if (offset + record_size > MaxFileSize) {
+                int new_fileID = current_fileID + 1;
+                // 尝试原子切换文件
+                if (current_fileID_.compare_exchange_strong(current_fileID, new_fileID)) {
+                    // 切换成功：重置偏移量并预留空间
+                    current_offset_.store(record_size); // 下条记录从record_size开始
+                    offset = 0; // 当前记录在新文件的0偏移
+                    current_fileID = new_fileID;
+                    break;
+                }
+                // 切换失败则重试（其他线程已切换）
+                continue;
             }
 
-            // 尝试切换文件
-            int new_fileID = current_fileID + 1;
-            if (current_fileID_.compare_exchange_weak(current_fileID, new_fileID)) {
-                // 切换成功，重置偏移量
-                current_offset_.store(record_size);
-                offset = 0;
-                current_fileID = new_fileID;
+            // 尝试原子预留空间
+            if (current_offset_.compare_exchange_weak(offset, offset + record_size)) {
+                // 预留成功：使用当前文件和预留偏移
                 break;
             }
         }
 
-        // 写入队列
-        {
-            lock_guard<mutex> lock(mtx_);
-            write_queue_.push({ move(record_ptr), current_fileID, offset, record_size });
-            cv_.notify_one();
-        }
-
+        // 入队无锁队列
+        write_queue_.enqueue({ move(record_ptr), current_fileID, offset, record_size });
+        
         return make_tuple(current_fileID, offset, record_size);
     }
-    // 后台线程处理写入任务
+    
     void WriteThreadValue() {
-        int fileID = 0;
-        while (!stop_flag_) {
+        while (true) {
             WriteTask task;
-            {
-                unique_lock<mutex> lock(mtx_);
-                // 等待任务队列非空
-                cv_.wait(lock, [this] { return !write_queue_.empty() || stop_flag_; });
-                if (stop_flag_) break;
-                
-                task = move(write_queue_.front());
-                write_queue_.pop();
-            }
+            // 阻塞等待任务
+            write_queue_.wait_dequeue(task);
             
-            // 写入数据到映射内存
+            // 检查退出信号
+            if (task.fileID == -1 || stop_flag_.load()) {
+                break;
+            }
+
             if (task.fileID != fileID) {
-                // 如果当前文件ID和任务的文件ID不一致，说明需要切换文件
+                // 切换文件
                 if (write_map_ != MAP_FAILED) {
-                    //刷盘操作
                     msync(write_map_, MaxFileSize, MS_SYNC);
-                    // 解除映射
                     munmap(write_map_, MaxFileSize);
                 }
                 fileID = task.fileID;
-                // 打开新文件并映射
                 OpenAndMapWriteFile();
             }
             memcpy(static_cast<char*>(write_map_) + task.offset, 
@@ -130,7 +118,34 @@ public:
                    task.size);
         }
     }
-
+    //最后清理队列中任务
+    void RemainingWrite() {
+        WriteTask task;
+        while (write_queue_.try_dequeue(task)) {
+            if (task.fileID == -1 || !task.record_ptr) continue;
+            
+            // 检查文件是否需要切换
+            if (task.fileID != fileID) {
+                if (write_map_ != MAP_FAILED) {
+                    msync(write_map_, MaxFileSize, MS_SYNC);
+                    munmap(write_map_, MaxFileSize);
+                }
+                fileID = task.fileID;
+                OpenAndMapWriteFile();
+            }
+            memcpy(static_cast<char*>(write_map_) + task.offset, 
+                   task.record_ptr->c_str(), 
+                   task.size);
+        }
+        
+        // 最后刷盘
+        if (write_map_ != MAP_FAILED) {
+            msync(write_map_, MaxFileSize, MS_SYNC);
+            munmap(write_map_, MaxFileSize);
+            write_map_ = MAP_FAILED;
+        }
+    }
+    
     string ReadValue(const tuple<uint64_t, uint64_t, uint64_t>& location) {
         uint64_t fileID, offset, size;
         tie(fileID, offset, size) = location;
@@ -167,21 +182,18 @@ private:
     };
 
     string file_path_;
-    const uint64_t MaxFileSize = 64 * 1024 * 1024;
-    queue<WriteTask> write_queue_;// 写入任务队列
+    const uint64_t MaxFileSize = 64 * 1024 * 1024; // 64MB
+    moodycamel::BlockingConcurrentQueue<WriteTask, moodycamel::ConcurrentQueueDefaultTraits> write_queue_;
     thread write_thread_;
-    // 使用原子变量来跟踪当前文件ID和偏移量
     atomic<int> current_fileID_;
     atomic<size_t> current_offset_;
     void* write_map_;
     void* read_map_;
     int64_t read_map_fileID_;
-    mutex mtx_;
-    condition_variable cv_;// 用于通知写线程
     atomic<bool> stop_flag_;
-
+    int fileID = 0;  // 用于跟踪当前文件ID
     void OpenAndMapWriteFile() {
-        string filename = file_path_ + to_string(current_fileID_) + ".dat";
+        string filename = file_path_ + to_string(fileID) + ".dat";
 
         // 打开或创建文件
         int fd = open(filename.c_str(), O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
@@ -199,13 +211,17 @@ private:
             throw runtime_error("Memory map for writing failed: " + filename);
         }
 
-        // 关闭文件描述符，因为已经映射了文件
         close(fd);
     }
 
     void OpenAndMapReadFile(uint64_t fileID) {
         string filename = file_path_ + to_string(fileID) + ".dat";
-
+        while (!filesystem::exists(filename)) {  // 需要 #include <filesystem>
+            if (stop_flag_.load()) {
+                throw runtime_error("File not found and stop flag set: " + filename);
+            }
+            this_thread::sleep_for(chrono::milliseconds(10));  // 短暂等待后重试
+        }
         // 打开文件
         int fd = open(filename.c_str(), O_RDONLY);
         if (fd == -1) {
@@ -219,7 +235,6 @@ private:
             throw runtime_error("Memory map for reading failed: " + filename);
         }
 
-        // 关闭文件描述符，因为已经映射了文件
         close(fd);
     }
 };

@@ -14,14 +14,15 @@ class Joiner : Worker{
     friend class Master;
     friend class Region;
     public:
-    Joiner(Master* master, std::string data_path);
+    Joiner(Master* master);
     ~Joiner() {
         if (joiner_thread_.joinable())
             joiner_thread_.join();
-        delete value_store_;
     }
     bool WaitForOldVersion(uint64_t version);
-
+    VDLS* GetValueStore() {
+        return master_->GetValueStore();
+    }
     void WriteAllBufferItems();
 
     void run();
@@ -31,7 +32,6 @@ class Joiner : Worker{
     void Join();
     private:
     Master* master_;
-    VDLS* value_store_;
     thread joiner_thread_;
     uint64_t version_ = 1;
     vector<BufferItem> buffer_;
