@@ -52,7 +52,7 @@ aux_source_directory(test/ letus_tests)
 include_directories(${OPENSSL_INCLUDE_DIR})
 include_directories(lib/)
 include_directories(workload/lib/)
-
+include_directories(${CMAKE_SOURCE_DIR}/lib/third_party)
 # add_executable(trace_replay "workload/exes/trace_replay.cc")
 # add_executable(trace_replay "workload/exes/trace_replay.cc" ${letus_lib})
 # target_link_libraries(trace_replay jsoncpp)
