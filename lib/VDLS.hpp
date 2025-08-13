@@ -36,7 +36,6 @@ public:
           stop_flag_(false) {
         current_fileID_.store(0);
         current_offset_.store(0);
-        OpenAndMapWriteFile();
         write_thread_ = thread(&VDLS::WriteThreadValue, this);
     }
 
@@ -47,7 +46,7 @@ public:
         if (write_thread_.joinable()) {
             write_thread_.join();
         }
-        RemainingWrite(); // 确保所有剩余的写入任务都被处理
+        RemainingWrite();
         if (read_map_ != MAP_FAILED) {
             munmap(read_map_, MaxFileSize);
         }
@@ -94,6 +93,7 @@ public:
     }
     
     void WriteThreadValue() {
+        OpenAndMapWriteFile();
         while (true) {
             WriteTask task;
             // 阻塞等待任务
@@ -104,18 +104,20 @@ public:
                 break;
             }
 
-            if (task.fileID != fileID) {
+            if (task.fileID != fileID_) {
                 // 切换文件
                 if (write_map_ != MAP_FAILED) {
                     msync(write_map_, MaxFileSize, MS_SYNC);
                     munmap(write_map_, MaxFileSize);
                 }
-                fileID = task.fileID;
+                fileID_ = task.fileID;
+                offset_ = 0; // 重置偏移量
                 OpenAndMapWriteFile();
             }
             memcpy(static_cast<char*>(write_map_) + task.offset, 
                    task.record_ptr->c_str(), 
                    task.size);
+            offset_ += task.size; // 更新当前偏移量
         }
     }
     //最后清理队列中任务
@@ -125,12 +127,12 @@ public:
             if (task.fileID == -1 || !task.record_ptr) continue;
             
             // 检查文件是否需要切换
-            if (task.fileID != fileID) {
+            if (task.fileID != fileID_) {
                 if (write_map_ != MAP_FAILED) {
                     msync(write_map_, MaxFileSize, MS_SYNC);
                     munmap(write_map_, MaxFileSize);
                 }
-                fileID = task.fileID;
+                fileID_ = task.fileID;
                 OpenAndMapWriteFile();
             }
             memcpy(static_cast<char*>(write_map_) + task.offset, 
@@ -159,7 +161,11 @@ public:
             OpenAndMapReadFile(fileID);
             read_map_fileID_ = fileID;
         }
-
+        while(1){
+            if(fileID_ > fileID) break;
+            if(fileID_ == fileID && offset_ > offset + size) break; 
+            this_thread::sleep_for(chrono::milliseconds(10));  // 短暂等待后重试
+        }
         // 从映射区域读取数据
         string line(static_cast<char*>(read_map_) + offset, size);
 
@@ -183,17 +189,20 @@ private:
 
     string file_path_;
     const uint64_t MaxFileSize = 64 * 1024 * 1024; // 64MB
+    alignas(64) atomic<int> current_fileID_;
+    alignas(64) atomic<size_t> current_offset_;
+    int fileID_ = 0;  // 用于跟踪当前文件ID
+    int offset_ = 0; // 用于跟踪当前偏移量
     moodycamel::BlockingConcurrentQueue<WriteTask, moodycamel::ConcurrentQueueDefaultTraits> write_queue_;
     thread write_thread_;
-    atomic<int> current_fileID_;
-    atomic<size_t> current_offset_;
+    thread file_thread_;
     void* write_map_;
     void* read_map_;
     int64_t read_map_fileID_;
     atomic<bool> stop_flag_;
-    int fileID = 0;  // 用于跟踪当前文件ID
+
     void OpenAndMapWriteFile() {
-        string filename = file_path_ + to_string(fileID) + ".dat";
+        string filename = file_path_ + to_string(fileID_) + ".dat";
 
         // 打开或创建文件
         int fd = open(filename.c_str(), O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
@@ -216,7 +225,7 @@ private:
 
     void OpenAndMapReadFile(uint64_t fileID) {
         string filename = file_path_ + to_string(fileID) + ".dat";
-        while (!filesystem::exists(filename)) {  // 需要 #include <filesystem>
+        while (!filesystem::exists(filename)) { 
             if (stop_flag_.load()) {
                 throw runtime_error("File not found and stop flag set: " + filename);
             }

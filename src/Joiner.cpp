@@ -8,6 +8,9 @@ Joiner::Joiner(Master* master) : master_(master) {
     PrintLog("STARTED");
 #endif
 }
+VDLS* Joiner::GetValueStore() {
+    return master_->GetValueStore();
+}
 bool Joiner::WaitForOldVersion(uint64_t version) {
     bool done[master_->MAX_REGION_NUM];
     memset(done, false, sizeof(done));

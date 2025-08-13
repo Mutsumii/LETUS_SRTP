@@ -20,9 +20,7 @@ class Joiner : Worker{
             joiner_thread_.join();
     }
     bool WaitForOldVersion(uint64_t version);
-    VDLS* GetValueStore() {
-        return master_->GetValueStore();
-    }
+    VDLS* GetValueStore();
     void WriteAllBufferItems();
 
     void run();
