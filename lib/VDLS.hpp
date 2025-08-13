@@ -134,10 +134,12 @@ public:
                 }
                 fileID_ = task.fileID;
                 OpenAndMapWriteFile();
+                offset_ = 0;
             }
             memcpy(static_cast<char*>(write_map_) + task.offset, 
                    task.record_ptr->c_str(), 
                    task.size);
+            offset_ += task.size;
         }
         
         // 最后刷盘
