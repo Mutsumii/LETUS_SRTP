@@ -66,7 +66,7 @@ Master::Master(std::string data_path, size_t max_region_num) : MAX_REGION_NUM(ma
         regions_.push_back(new_region);
         // PrintLog("Region " + to_string(i) + " created");
     }
-    joiner_ = new Joiner(this, data_path);
+    joiner_ = new Joiner(this);
 }
 
 void Master::Put(uint64_t tid, uint64_t version, const string& key,
