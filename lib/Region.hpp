@@ -84,7 +84,6 @@ class Region : Worker{
 public:
     Region(std::string data_path, ConcurrentArray<pair<uint64_t, std::list<BufferItem>>>& buffer, Master* master, size_t id) :
         stop_(false), buffer_(buffer), master_(master), thread_id_(id), Worker(true) {
-        value_store_ = new VDLS(data_path, to_string(id));
         // PrintLog("Creating Region " + std::to_string(thread_id_));
         buffer_.push_back(make_pair(1, list<BufferItem>{})); // buffer the first version
         // PrintLog("Buffered item for version 1");
@@ -109,7 +108,7 @@ public:
     void Put(std::tuple<uint64_t, std::string, std::string> kvpair);
 
     void Commit(uint64_t version);
-
+    VDLS* GetValueStore();
     void Stop();
     void Join();
 
