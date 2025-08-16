@@ -3,6 +3,9 @@
 #include <chrono>
 
 Joiner::Joiner(Master* master) : master_(master) {
+    page_store_ = new LSVPS();
+    page_store_->RegisterTrie(master_);
+    page_store_->RegisterWorker(this);
     joiner_thread_ = thread(std::bind(&Joiner::run, this));
 #ifdef JOINER_LOG
     PrintLog("STARTED");
@@ -160,3 +163,5 @@ void Joiner::Join() {
     PrintLog("JOINED");
 #endif
 }
+
+void Joiner::Flush(){ page_store_->Flush(); }

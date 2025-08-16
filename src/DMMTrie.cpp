@@ -531,6 +531,42 @@ void DeltaPage::SerializeTo() {
   }
 }
 
+bool DeltaPage::Deserialize(char *buffer) {
+  // #ifdef DEBUG
+  //   cout << "new DeltaPage" << endl;
+  // #endif
+
+  // Page({0, 0, true, ""});  // 临时初始化，后面会更新
+  ClearDeltaPage();
+  b_update_count_ = 0;
+
+  size_t current_size = 0;
+  last_pagekey_.version =
+      *(reinterpret_cast<uint64_t *>(buffer + current_size));
+  current_size += sizeof(uint64_t);
+  last_pagekey_.tid = *(reinterpret_cast<uint64_t *>(buffer + current_size));
+  current_size += sizeof(uint64_t);
+  last_pagekey_.type = *(reinterpret_cast<bool *>(buffer + current_size));
+  current_size += sizeof(bool);
+  size_t pid_size = *(reinterpret_cast<size_t *>(buffer + current_size));
+  current_size += sizeof(pid_size);
+  last_pagekey_.pid = string(buffer + current_size,
+                             pid_size);  // deserialize pid (pid_size bytes)
+  current_size += pid_size;
+  update_count_ = *(reinterpret_cast<uint16_t *>(buffer + current_size));
+  current_size += sizeof(uint16_t);
+  for (int i = 0; i < update_count_; i++) {
+    deltaitems_.push_back(DeltaItem(buffer, current_size));
+  }
+
+  // 反序列化完成后，更新 PageKey
+  PageKey pagekey = {last_pagekey_.version, last_pagekey_.tid, true,
+                     last_pagekey_.pid};
+  this->SetPageKey(pagekey);
+
+  return true;
+}
+
 void DeltaPage::ClearDeltaPage() {
   deltaitems_.clear();
   update_count_ = 0;
@@ -575,6 +611,7 @@ BasePage::BasePage(const BasePage &other) : Page(other), worker_(other.worker_) 
   }
 }
 
+//buffer存储具体格式化内容
 BasePage::BasePage(Worker* worker, char *buffer) : worker_(worker) {
   Page({0, 0, false, ""});  // 临时初始化，后面会更新
 
@@ -673,11 +710,12 @@ void BasePage::SerializeTo() {
   root_->SerializeTo(buffer, current_size, true);  // serialize nodes
 }
 
+//更新页面
 void BasePage::UpdatePage(uint64_t version,
                           tuple<uint64_t, uint64_t, uint64_t> location,
                           const string &value, const string &nibbles,
                           const string &child_hash, DeltaPage *deltapage,
-  PageKey pagekey) {
+  PageKey pagekey, Master* master_) {
   // std::lock_guard<std::mutex> lock(mutex_);  // lock for thread safety
   // parameter "nibbles" are the first two nibbles after pid
   if (nibbles.size() == 0) {
@@ -727,34 +765,34 @@ void BasePage::UpdatePage(uint64_t version,
   if (deltapage != nullptr) {
     PageKey deltapage_pagekey = {version, 0, true, pagekey.pid};
     deltapage->SetPageKey(deltapage_pagekey);
+    //从这开始注释的
+     if (deltapage->GetDeltaPageUpdateCount() >= Td_) {
+       // When a DeltaPage accumulates 𝑇𝑑 updates, it is frozen and a new active
+       // one is initiated
 
-    // if (deltapage->GetDeltaPageUpdateCount() >= Td_) {
-    //   // When a DeltaPage accumulates 𝑇𝑑 updates, it is frozen and a new active
-    //   // one is initiated
-
-    //   DeltaPage *deltapage_copy = new DeltaPage(*deltapage);
-    //   deltapage_copy->SerializeTo();
-    //   // store frozen deltapage in cache
-    //   trie_->WritePageCache(deltapage_pagekey, deltapage_copy);
-
-    //   deltapage->ClearDeltaPage();  // delete all DeltaItems in DeltaPage
-    //   // record the PageKey of DeltaPage passed to LSVPS
-    //   deltapage->SetLastPageKey(deltapage_pagekey);
-    //   trie_->AddDeltaPageVersion(pagekey.pid, version);
-    // }
-    // if (deltapage->GetBasePageUpdateCount() >= Tb_) {
-    //   // Each page generates a checkpoint as BasePage after every 𝑇𝑏 updates
-    //   BasePage *basepage_copy =
-    //       new BasePage(*this);  // not deep copy!!!!!!!!!!!!!!!!!!!!!!!!!
-    //   basepage_copy->SerializeTo();
-    //   trie_->WritePageCache(pagekey, basepage_copy);  // store basepage in cache
-
-    //   trie_->UpdatePageVersion(pagekey, version, version);
-    //   deltapage->ClearBasePageUpdateCount();
-    //   deltapage->SetLastPageKey(pagekey);
-    //   return;
-    // }
+       DeltaPage *deltapage_copy = new DeltaPage(*deltapage);
+       deltapage_copy->SerializeTo();
+       // store frozen deltapage in cache
+       worker_->WritePageCache(deltapage_pagekey, deltapage_copy);
+       deltapage->ClearDeltaPage();  // delete all DeltaItems in DeltaPage
+       // record the PageKey of DeltaPage passed to LSVPS
+       deltapage->SetLastPageKey(deltapage_pagekey);
+       lock_guard<mutex> lock(mutex_);
+       master_->AddDeltaPageVersion(pagekey.pid, version);//更新pid的版本
+     }
+     if (deltapage->GetBasePageUpdateCount() >= Tb_) {
+       // Each page generates a checkpoint as BasePage after every 𝑇𝑏 updates
+       BasePage *basepage_copy =
+           new BasePage(*this);  // not deep copy!!!!!!!!!!!!!!!!!!!!!!!!!
+       basepage_copy->SerializeTo();
+       worker_->WritePageCache(pagekey, basepage_copy);  // store basepage in cache
+       worker_->UpdatePageVersion(pagekey, version, version);
+       deltapage->ClearBasePageUpdateCount();
+       deltapage->SetLastPageKey(pagekey);
+       return;
+     }//注释到这结束
   }
+  
     pair<uint64_t, uint64_t> page_version = worker_->GetPageVersion(pagekey);
     worker_->UpdatePageVersion(pagekey, version, page_version.second);
 }
@@ -806,7 +844,7 @@ void BasePage::UpdateDeltaItem(const DeltaPage::DeltaItem& deltaitem) {
 
 Node *BasePage::GetRoot() const { return root_; }
 
-DMMTrie::DMMTrie(uint64_t tid, VDLS *value_store,
+DMMTrie::DMMTrie(uint64_t tid, VDLS* value_store,
                  uint64_t current_version)
     : tid(tid),
       value_store_(value_store),

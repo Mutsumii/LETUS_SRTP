@@ -55,6 +55,7 @@ const std::string& GetNibble(uint8_t nibble_value) {
 Master::Master(std::string data_path, size_t max_region_num) : MAX_REGION_NUM(max_region_num),current_version_(0) {
     regions_.reserve(MAX_REGION_NUM);
     value_store_ = new VDLS(data_path, "global");
+    //page_store_ = new LSVPS(data_path, "LSVPS");
     bottomup_buffers_ = vector<ConcurrentArray<pair<uint64_t, list<BufferItem>>>>(MAX_REGION_NUM);
     //给各个Region分配nibble字典
     for (uint8_t i = 0; i < MAX_REGION_NUM; i++) {
@@ -68,7 +69,7 @@ Master::Master(std::string data_path, size_t max_region_num) : MAX_REGION_NUM(ma
     }
     joiner_ = new Joiner(this);
 }
-
+// 给region分配put任务
 void Master::Put(uint64_t tid, uint64_t version, const string& key,
     const string& value) {
     // auto nibble = key.length() >= 2 ? key.substr(0, 2) : key;
@@ -109,6 +110,7 @@ void Master::Put(uint64_t tid, uint64_t version, const string& key,
     // }
 }
 
+// 让所有region commit某个版本
 void Master::Commit(uint64_t version) {
 #ifdef MASTER_LOG 
     PrintLog("Commit Signal");
@@ -126,11 +128,11 @@ void Master::Commit(uint64_t version) {
 }
 
 
-
 void  Master::AddDeltaPageVersion(const string& pid, uint64_t version) {
-    deltapage_versions_[pid].push_back(version);
+    deltapage_versions_[pid].push_back(version);//pid索引版本更新
 }
 
+// 读取操作
 std::string Master::Get(uint64_t tid, uint64_t version, const std::string& key) {
     // if (version >= joiner_->version_) {
     //     cout << "Version " << version << " has not committed yet" << endl;
@@ -141,6 +143,7 @@ std::string Master::Get(uint64_t tid, uint64_t version, const std::string& key) 
     PrintLog("Wait");
 #endif
     // PrintLog("Wait");
+    // 等待所有region commit到version
     WaitForCommit(version);
     // PrintLog("Get Started");
 #ifdef MASTER_LOG
@@ -160,6 +163,7 @@ std::string Master::Get(uint64_t tid, uint64_t version, const std::string& key) 
         cout << "Key " << key << " not found at version " << version << endl;
         return "";
     }
+    // 寻找leafNode
     for (int i = 0; i <= key.size(); i += 2) {
         string pid = nibble_path.substr(0, i);
         BasePage* page = nullptr;
@@ -264,10 +268,10 @@ DMMTrieProof Master::GetProof(uint64_t tid, uint64_t version,
 }
 
 void Master::Stop() {
+    joiner_->Stop();
     for (auto& region : regions_) {
         region->postTask(make_tuple(0, "<STOP>", ""));
     }
-    joiner_->Stop();
     // while(true)
     // if (joiner_->stopped_) return;
 #ifdef MASTER_LOG
@@ -279,4 +283,10 @@ void Master::WaitForCommit(uint64_t version) {
     while (version >= joiner_->version_) {
         std::this_thread::yield();
     }
+}
+void Master::Flush() {
+    for(int i=0;i<MAX_REGION_NUM;i++) {
+        regions_[i]->Flush();
+    }
+    joiner_->Flush();
 }

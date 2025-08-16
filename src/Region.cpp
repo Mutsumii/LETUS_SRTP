@@ -103,13 +103,14 @@ void Region::Put(tuple<uint64_t, string, string> kvpair) {
         cout << "Value cannot be empty string" << endl;
         return;
     }
+    // 将put操作缓存到put_cache_中
     region_version_ = version;
     put_cache_[key] = value;
     return;
 }
 
 
-void Region::Commit(uint64_t version) {
+void Region::Commit(uint64_t version) { //commit版本version
     if (version < commited_version_) {
         PrintLog("Commit version incompatible");
         return;
@@ -131,48 +132,51 @@ void Region::Commit(uint64_t version) {
     vector<chrono::microseconds> durations;
     durations.resize(3, chrono::microseconds(0));
     // start = chrono::system_clock::now();
+    //按照key的字符串大小排列顺序给出哈希表（key为string，value为set<string>）
+    //该哈希表存储每个put操作中更新的页面的pid
     map<string, set<string>, decltype(CompareStrings)> updates(CompareStrings);
 
-    for (const auto& it : put_cache_) {
-        for (int i = it.first.size() % 2 == 0 ? it.first.size()
+    for (const auto& it : put_cache_) { // 遍历put_cache_中的所有键值对
+        for (int i = it.first.size() % 2 == 0 ? it.first.size() //取nibbles
             : it.first.size() - 1;
             i > 0; i -= 2) {
             // store the pid and nibbles of each page updated in every put
-            updates[it.first.substr(0, i)].insert(it.first.substr(i, 2));
+            updates[it.first.substr(0, i)].insert(it.first.substr(i, 2)); //存储需要更新的页面Id
         }
     }
     // end = chrono::system_clock::now();
     // auto duration = chrono::duration_cast<chrono::microseconds>(end - start);
     // PrintLog("Time taken to update put_cache_: " + to_string(duration.count()) + " microseconds");
-    //     set<string> pids;
+         set<string> pids;
 
-// for (const auto &it : put_cache_) {
-//   for (int i = it.first.size() % 2 == 0 ? it.first.size()
-//                                         : it.first.size() - 1;
-//        i > 0; i -= 2) {
-//     pids.insert(it.first.substr(0, i));
-//   }
-// }
-
+         for (const auto &it : put_cache_) {
+            for (int i = it.first.size() % 2 == 0 ? it.first.size()
+                                         : it.first.size() - 1;
+                i > 0; i -= 2) {
+             pids.insert(it.first.substr(0, i));
+           }
+         }
+        // for(string pid : pids) {
+        //    active_deltapages_[pid]=page_store_->GetActiveDeltaPage(pid);
+        // }
     size_t cnt = 0;
     // start = chrono::system_clock::now();
+    //对每个更新的页面进行处理
     for (const auto& it : updates) {
         string pid = it.first;
+        bool if_exceed = false;
         // PrintLog(string("Wait ") + to_string(GetNibbleValue(pid)));
-        // NibbleBucket* bucket = nullptr;
-        // while (!(bucket = GetNibbleBucket(GetNibbleValue(pid))));
-
-        // while (!bucket);
         // get the latest version number of a page
 
         // start = chrono::system_clock::now();
-
+        
+        //针对该pid寻找BasePage
         uint64_t page_version = GetPageVersion({ 0, 0, false, pid }).first;
-        PageKey pagekey = { version, 0, false, pid },
+        PageKey pagekey = { version, 0, false, pid }, //新建pagekey
             old_pagekey = { page_version, 0, false, pid };
         BasePage* page = GetPage(old_pagekey);  // load the page into lru cache
-        if (page == nullptr) {
-            // GetPage returns nullptr means that the pid is new
+        if (page == nullptr) { 
+            // GetPage returns nullptr means that the pid is new,it isn't in lru cache
             page = new (pool_.allocate()) BasePage(this, nullptr, pid, page_pool_.allocate());
             // cnt++;
             // start = chrono::system_clock::now();
@@ -189,7 +193,27 @@ void Region::Commit(uint64_t version) {
             // durations[2] += chrono::duration_cast<chrono::microseconds>(end - start);
         }
 
-        DeltaPage* deltapage = GetDeltaPage(pid);
+        //根据pid找DeltaPage
+        DeltaPage* deltapage = page_store_->GetActiveDeltaPage(pid);
+        if (2 * it.second.size() + deltapage->GetDeltaPageUpdateCount() >=
+            2 * Td_) {
+      // the updates in page is more than the capacity of two deltapages
+            if_exceed = true;
+        if (deltapage->GetDeltaPageUpdateCount() != 0) {
+            PageKey deltapage_pagekey = {version, 0, true, pagekey.pid};
+
+            DeltaPage *deltapage_copy = new DeltaPage(*deltapage);
+            deltapage_copy->SetPageKey(deltapage_pagekey);
+            deltapage_copy->SerializeTo();
+            // store frozen deltapage in cache
+            WritePageCache(deltapage_pagekey, deltapage_copy);
+
+            deltapage->ClearDeltaPage();  // delete all DeltaItems in DeltaPage
+        // record the PageKey of DeltaPage passed to LSVPS
+            deltapage->SetLastPageKey(deltapage_pagekey);
+            master_->AddDeltaPageVersion(pagekey.pid, version);
+            }
+        }
         for (const auto& nibbles : it.second) {
             // path is key when page is leaf page, pid of child page when page is
             // index page
@@ -204,14 +228,28 @@ void Region::Commit(uint64_t version) {
                 VDLS* value_store_ = GetValueStore();
                 location = value_store_->WriteValue(version, path, value);
             }
-            page->UpdatePage(version, location, value, nibbles, child_hash,
-                deltapage, pagekey);
+            if(if_exceed) page->UpdatePage(version, location, value, nibbles, child_hash,
+                nullptr,pagekey,master_);
+            else page->UpdatePage(version, location, value, nibbles, child_hash,
+                deltapage, pagekey,master_);
         }
         // start = chrono::system_clock::now();
+        if (if_exceed) { 
+            BasePage *basepage_copy = new BasePage(*page);
+            basepage_copy->SerializeTo();
+            WritePageCache(pagekey, basepage_copy);  // store basepage in cache
+
+            UpdatePageVersion(pagekey, version, version);
+            deltapage->ClearBasePageUpdateCount();
+            deltapage->SetLastPageKey(pagekey);
+        }
+        // deltapage->SerializeTo();
         UpdatePageKey(old_pagekey, pagekey);
+        page_store_->StoreActiveDeltaPage(deltapage);
+  }
         // end = chrono::system_clock::now();
         // durations[4] += chrono::duration_cast<chrono::microseconds>(end - start);
-    }
+    
     // PrintLog("Total number of pages created: " + to_string(cnt));
     // for(int i = 0; i < durations.size(); i++) {
     //   PrintLog("Time taken to update page phase" + to_string(i) + ": " + to_string(durations[i].count()) + " microseconds");
@@ -223,7 +261,6 @@ void Region::Commit(uint64_t version) {
     // start = chrono::system_clock::now();
     for (const auto& it : put_cache_) {
         std::string nibbles = it.first.substr(0, 2);
-        // NibbleBucket* bucket = GetNibbleBucket(GetNibbleValue(nibbles));
         tuple<uint64_t, uint64_t, uint64_t> location;
         string value, child_hash;
         if (nibbles.size() == 2) {  // indexnode + indexnode
@@ -258,6 +295,15 @@ void Region::Commit(uint64_t version) {
     }
     commited_version_ = version;
     // std::this_thread::sleep_for(chrono::milliseconds(1));
+    for(const auto& it : page_cache_){
+        page_store_->StorePage(it.second);
+    }
+    //for(const auto& it : active_deltapages_){
+    //    page_store_->StoreActiveDeltaPage(it.second);
+    //}
+    //for(auto& it : page_cache_) { 
+    //    delete it.second;  // delete BasePage
+    //}
     page_cache_.clear();
     put_cache_.clear();
 #ifdef TIMESTAMP_LOG
@@ -301,3 +347,7 @@ void Region::Join() {
     PrintLog("JOINED");
 #endif
 }
+void Region::Flush() {
+    page_store_->Flush();
+}
+

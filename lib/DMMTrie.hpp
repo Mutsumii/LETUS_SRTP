@@ -188,6 +188,7 @@ class DeltaPage : public Page {
   void AddLeafNodeUpdate(uint8_t location, uint64_t version, const string &hash,
                          uint64_t fileID, uint64_t offset, uint64_t size);
   void SerializeTo();
+  bool Deserialize(char *buffer);
   void ClearDeltaPage();
   const vector<DeltaItem> &GetDeltaItems() const;
   PageKey GetLastPageKey() const;
@@ -221,15 +222,13 @@ class BasePage : public Page {
                   tuple<uint64_t, uint64_t, uint64_t> location,
                   const string &value, const string &nibbles,
                   const string &child_hash, DeltaPage *deltapage,
-                  PageKey pagekey);
+                  PageKey pagekey, Master* master_);
   void UpdateDeltaItem(const DeltaPage::DeltaItem &deltaitem);
   Node* GetRoot() const;
   void SetAttribute(Worker* worker_ = nullptr, Node *root = nullptr,
     const string &pid = "", char* page_data = nullptr);
-
   private:
   Worker* worker_;
-  NibbleBucket* bucket_;
   Node* root_;  // the root of the page
   std::mutex mutex_;
 };
